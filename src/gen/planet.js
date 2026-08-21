@@ -119,9 +119,21 @@ export class PlanetSurface {
     // Continent frequency: bigger worlds get more, smaller ones fewer, so
     // continents stay a comparable *absolute* size to walk across.
     this.continentFreq = 1.1 * Math.max(0.6, planet.radius / 6000e3);
-    this.detailFreq = this.continentFreq * 9;
     this.warpFreq = this.continentFreq * 2.2;
     this.warpAmount = this.profile.warp * 0.35;
+
+    /*
+     * Frequencies for the mid and small scales, expressed as "features this
+     * many metres across" and converted using f = R / wavelength. Deriving
+     * them from the radius keeps a moon and a super-earth both covered in
+     * human-scale terrain rather than making features scale with the planet.
+     */
+    const R = planet.radius;
+    this.hillFreq = R / 150000;    // ~150 km mountain groups
+    this.peakFreq = R / 22000;     // ~22 km individual peaks
+    this.gullyFreq = R / 3000;     // ~3 km valleys and spurs
+    this.roughFreq = R / 600;      // ~600 m ground shape
+    this.microFreq = R / 120;      // ~120 m surface undulation
 
     this.craterStrength = this.profile.craters * (planet.atmosphere < 0.3 ? 1 : 0.35);
     this.ridgeMix = this.profile.ridge;
@@ -159,9 +171,31 @@ export class PlanetSurface {
 
   /**
    * Elevation in metres above sea level for a point on the unit sphere.
+   *
+   * Frequencies are chosen by the physical wavelength they produce on THIS
+   * planet, not by arbitrary constants. On a unit sphere a noise frequency f
+   * gives features about R/f metres across, so for a 3,850 km world:
+   *
+   *     f = 0.7  -> ~5,500 km   continents
+   *     f = 2    -> ~1,900 km   major ranges
+   *     f = 25   -> ~150 km     mountain groups
+   *     f = 180  -> ~21 km      individual peaks and valleys
+   *     f = 1400 -> ~2.7 km     ridges and gullies
+   *     f = 9000 -> ~430 m      ground undulation
+   *
+   * The first version stopped at f≈6 — every feature it could produce was
+   * hundreds of kilometres wide, so standing on the surface the ground was
+   * mathematically flat (measured: 49 m of variation across 50 km) and the
+   * world rendered as a featureless green plane no matter how good the shading
+   * was. The mid and small scales below are what make terrain you can see.
+   *
+   * `detail` trims the highest-frequency layers for distant LOD rings, where
+   * they would alias rather than add anything. Collision and the near ring
+   * both use full detail, so what you stand on always matches what you see.
+   *
    * Hot path — called for every terrain vertex and every collision query.
    */
-  elevation(x, y, z) {
+  elevation(x, y, z, detail = 4) {
     const s = this.seed;
     const cf = this.continentFreq;
 
@@ -178,9 +212,9 @@ export class PlanetSurface {
     // Continents: low frequency, high amplitude.
     const continent = fbm(s, wx * cf, wy * cf, wz * cf, 4, 2.1, 0.5);
 
-    // Mountains: ridged noise, masked to continent highs so ranges sit inland.
-    // The mask is zero over deep ocean, so skipping it there saves five octaves
-    // on a large fraction of every water world's vertices.
+    // Mountains: ridged noise masked to continent highs so ranges sit inland.
+    // The mask is zero over deep ocean, so skipping it there saves five
+    // octaves on a large fraction of every water world's vertices.
     const mountainMask = continent * 0.5 + 0.35;
     let mountains = 0;
     if (mountainMask > 0.001) {
@@ -188,13 +222,39 @@ export class PlanetSurface {
       mountains = ridged(s + 77, wx * mf, wy * mf, wz * mf, 5, 2.2, 0.5) * mountainMask;
     }
 
-    // Mid + fine detail.
-    const df = this.detailFreq;
-    const detail = fbm(s + 131, wx * df, wy * df, wz * df, 4, 2.3, 0.45);
-
     let h = continent * (1 - this.ridgeMix * 0.5)
-          + mountains * this.ridgeMix * 1.5
-          + detail * 0.12;
+          + mountains * this.ridgeMix * 1.5;
+
+    /*
+     * Mid-scale relief — the band that decides whether a landscape has shape.
+     * Ridged noise here produces actual peaks and valleys at the tens-of-km
+     * scale you can see from the ground, masked to land so the seabed stays
+     * smooth.
+     */
+    const landMask = Math.max(0, Math.min(1, mountainMask * 1.4));
+    if (landMask > 0.01) {
+      const hf = this.hillFreq;
+      const hills = (ridged(s + 211, wx * hf, wy * hf, wz * hf, 4, 2.15, 0.5) - 0.4);
+      h += hills * 0.30 * landMask * this.ridgeMix * 1.6;
+
+      const pf = this.peakFreq;
+      const peaks = (ridged(s + 307, wx * pf, wy * pf, wz * pf, 3, 2.3, 0.5) - 0.42);
+      h += peaks * 0.13 * landMask;
+    }
+
+    // Small scale: gullies and ground undulation. Trimmed on distant rings.
+    if (detail >= 2) {
+      const gf = this.gullyFreq;
+      h += fbm(s + 419, wx * gf, wy * gf, wz * gf, 3, 2.2, 0.5) * 0.035;
+    }
+    if (detail >= 3) {
+      const rf = this.roughFreq;
+      h += fbm(s + 523, wx * rf, wy * rf, wz * rf, 3, 2.2, 0.5) * 0.012;
+    }
+    if (detail >= 4) {
+      const mf2 = this.microFreq;
+      h += fbm(s + 631, wx * mf2, wy * mf2, wz * mf2, 2, 2.2, 0.5) * 0.0045;
+    }
 
     // Craters for thin-atmosphere worlds.
     if (this.craterStrength > 0) {
@@ -215,16 +275,16 @@ export class PlanetSurface {
   }
 
   /** Terrain radius (planet centre to ground) at a unit direction. */
-  radiusAt(x, y, z) {
-    return this.radius + this.elevation(x, y, z);
+  radiusAt(x, y, z, detail = 4) {
+    return this.radius + this.elevation(x, y, z, detail);
   }
 
   /**
    * Surface radius including liquid: standing on an ocean planet you float on
    * the sea surface, not on the seabed.
    */
-  surfaceRadiusAt(x, y, z) {
-    const e = this.elevation(x, y, z);
+  surfaceRadiusAt(x, y, z, detail = 4) {
+    const e = this.elevation(x, y, z, detail);
     return this.radius + (this.hasOcean ? Math.max(e, this.seaLevel) : e);
   }
 

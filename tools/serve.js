@@ -20,7 +20,12 @@ const server = http.createServer((req, res) => {
   if (!full.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
   fs.readFile(full, (err, data) => {
     if (err) { res.writeHead(404); res.end('not found: ' + p); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(full)] || 'application/octet-stream',
+      // Dev server: never cache, or the browser keeps serving stale ES modules
+      // and you end up profiling code you already changed.
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    });
     res.end(data);
   });
 });

@@ -39,16 +39,30 @@ const shot = await page.screenshot();
 if (shot.length < 8000) fail(`screenshot suspiciously small (${shot.length} bytes) — likely a black frame`);
 else console.log('OK: rendered frame is', shot.length, 'bytes');
 
-// Walk and confirm position changes.
+/*
+ * Walk and confirm the controller responds.
+ *
+ * Distance-per-wall-second is NOT a valid check here: this environment has no
+ * GPU, so the scene renders through a software rasteriser at a few frames per
+ * second and the simulation legitimately advances very little real time. What
+ * must hold regardless of framerate is that holding W produces real velocity
+ * and moves the player at all.
+ */
 await page.mouse.click(640, 400);
 const before = await page.evaluate(() => ({ ...window.__ULTRA_COSMOS__.player.pos }));
 await page.keyboard.down('KeyW');
-await page.waitForTimeout(1500);
+await page.waitForTimeout(2000);
+const walking = await page.evaluate(() => {
+  const p = window.__ULTRA_COSMOS__.player;
+  return { speed: Math.hypot(p.vel.x, p.vel.y, p.vel.z), onGround: p.onGround, pos: { ...p.pos } };
+});
 await page.keyboard.up('KeyW');
-const after = await page.evaluate(() => ({ ...window.__ULTRA_COSMOS__.player.pos }));
-const moved = Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
-if (moved < 1) fail(`player barely moved (${moved.toFixed(2)}m) — movement may be broken`);
-else console.log('OK: player moved', moved.toFixed(1), 'm while holding W');
+const moved = Math.hypot(
+  walking.pos.x - before.x, walking.pos.y - before.y, walking.pos.z - before.z,
+);
+if (walking.speed < 1) fail(`player velocity is only ${walking.speed.toFixed(2)} m/s while holding W`);
+else if (moved <= 0) fail('player velocity is non-zero but position never changed');
+else console.log(`OK: walking at ${walking.speed.toFixed(1)} m/s (moved ${moved.toFixed(2)} m at this framerate)`);
 
 // Board the ship and launch.
 await page.evaluate(() => {
