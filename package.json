@@ -1,0 +1,11 @@
+{
+  "name": "ultra-cosmos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ULTRA COSMOS — a procedural open-world space exploration sandbox.",
+  "scripts": {
+    "dev": "node tools/serve.js",
+    "test": "node --test tests/*.test.js"
+  }
+}
