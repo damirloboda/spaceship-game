@@ -48,7 +48,7 @@ export function plantGeometry(sp) {
       break;
     }
     case 'palm': {
-      parts.push(cyl(0.1 * W, 0.18 * W, H * 0.9, H * 0.45, trunk, 5));
+      parts.push(cyl(0.16 * W, 0.3 * W, H * 0.9, H * 0.45, trunk, 6));
       for (let i = 0; i < 6; i++) {
         const g = new THREE.BoxGeometry(W * 2.2, 0.05, W * 0.45);
         g.translate(W * 1.1, 0, 0); g.rotateZ(-0.35); g.rotateY((i / 6) * Math.PI * 2); g.translate(0, H * 0.9, 0);

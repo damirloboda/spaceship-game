@@ -75,7 +75,11 @@ export class Hud {
   }
 
   banner(key, type = 'accent', params, subKey) {
-    this.bannerQueue.push({ text: t(key, params), sub: subKey ? t(subKey, params) : '', type });
+    const text = t(key, params);
+    if (this.bannerQueue.some((b) => b.text === text) || this.currentBanner === text) return;
+    // Never let a backlog build up: keep only the latest few.
+    if (this.bannerQueue.length > 2) this.bannerQueue.shift();
+    this.bannerQueue.push({ text, sub: subKey ? t(subKey, params) : '', type });
     if (this.game.settings.subtitles && type === 'danger') this.game.audio.play('alarm');
   }
 
@@ -135,8 +139,9 @@ export class Hud {
         E.banner.replaceChildren(h('div', { class: 'b-main' }, b.text), b.sub ? h('div', { class: 'b-sub' }, b.sub) : '');
         void E.banner.offsetWidth;
         E.banner.classList.add('on');
-        this.bannerTimer = b.short ? 2.6 : 4.2;
-      }
+        this.currentBanner = b.text;
+        this.bannerTimer = (b.short ? 2.4 : 3.6) * (this.bannerQueue.length ? 0.6 : 1);
+      } else this.currentBanner = null;
     }
     // Prompt
     const it = g.interaction;

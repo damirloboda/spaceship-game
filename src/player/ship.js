@@ -349,8 +349,11 @@ export class Ship {
       this.vel.lerp(fwd.clone().multiplyScalar(FLIGHT.spaceMaxSpeed * 3), 1 - Math.exp(-2 * dt));
       if (lb.t > 1.3) { lb.phase = lb.interstellar ? 'tunnel' : 'cruise'; lb.t = 0; game.audio?.play('whoosh'); }
     } else if (lb.phase === 'tunnel') {
-      // Interstellar: real acceleration, then the system swaps under cover of the tunnel.
-      this.vel.copy(fwd).multiplyScalar(FLIGHT.lightbreakSpeed * Math.min(1, lb.t));
+      // Interstellar: real acceleration, then the system swaps under cover of the
+      // tunnel. After the swap the ship holds position at the arrival point
+      // while the tunnel plays out (the jump itself is between systems).
+      if (!lb.swapped) this.vel.copy(fwd).multiplyScalar(FLIGHT.lightbreakSpeed * Math.min(1, lb.t));
+      else this.vel.copy(fwd).multiplyScalar(50);
       if (!lb.swapped && lb.t > 1.2) {
         lb.swapped = true;
         game.arriveInSystem(lb.target.systemId, lb.target.via);
@@ -381,7 +384,7 @@ export class Ship {
       }
     }
     this.root.position.addScaledVector(this.vel, dt);
-    this.speed = this.vel.length();
+    this.speed = lb.phase === 'tunnel' ? FLIGHT.lightbreakSpeed : this.vel.length();
     this.shake = Math.max(this.shake, lb.phase === 'tunnel' ? 0.6 : 0.35);
     this.collideTerrain(dt);
   }

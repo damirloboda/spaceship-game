@@ -84,6 +84,8 @@ export class Scatter {
       this.depositMeshes[type] = mesh;
     }
     this.activeDeposits = [];
+    this.maxDistance = 1600 * Math.sqrt(density);
+    this.lastFocus = new THREE.Vector3(Infinity, 0, 0);
   }
 
   addSway(mat, height) {
@@ -119,7 +121,7 @@ export class Scatter {
     const R = s.radius;
     const rng = new RNG(hashMix(this.body.def.seed, node.key));
     const d = [0, 0, 0];
-    const chunk = { key: node.key, plants: [], deposits: [] };
+    const chunk = { key: node.key, plants: [], deposits: [], center: node.center.clone() };
     const q = new THREE.Quaternion();
     const yaw = new THREE.Quaternion();
     const m = new THREE.Matrix4();
@@ -184,7 +186,14 @@ export class Scatter {
     const dcounts = {};
     for (const t of Object.keys(this.depositMeshes)) dcounts[t] = 0;
     this.activeDeposits = [];
+    const far2 = (this.maxDistance + 400) ** 2;
+    const focus = this.lastFocus;
     for (const chunk of this.chunks.values()) {
+      // Distant vegetation is dropped entirely: it is sub-pixel anyway.
+      if (Number.isFinite(focus.x) && chunk.center.distanceToSquared(focus) > far2) {
+        for (const dep of chunk.deposits) if (!dep.mined) this.activeDeposits.push(dep);
+        continue;
+      }
       for (const p of chunk.plants) {
         const sp = this.species[p.sp];
         const c = counts[p.sp];
@@ -213,8 +222,12 @@ export class Scatter {
     this.dirty = false;
   }
 
-  update(dt, budgetMs = 2) {
+  update(dt, budgetMs = 2, focus = null) {
     this.time.value += dt;
+    if (focus && focus.distanceToSquared(this.lastFocus) > 120 * 120) {
+      this.lastFocus.copy(focus);
+      this.dirty = true;
+    }
     if (this.pending.length) {
       const t0 = performance.now();
       while (this.pending.length && performance.now() - t0 < budgetMs) {

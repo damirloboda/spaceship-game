@@ -76,7 +76,7 @@ export function createStarfield(count = 7000, seed = 3) {
     const c = t < 0.15 ? [1, 0.7, 0.5] : t < 0.3 ? [0.7, 0.8, 1] : [1, 1, 1];
     const b = Math.pow(rng.next(), 3) * 0.9 + 0.1;
     col[i * 3] = c[0] * b; col[i * 3 + 1] = c[1] * b; col[i * 3 + 2] = c[2] * b;
-    size[i] = rng.next() < 0.02 ? rng.range(2.5, 4) : rng.range(1, 2.2);
+    size[i] = rng.next() < 0.02 ? rng.range(2.0, 3.0) : rng.range(0.8, 1.7);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -89,7 +89,7 @@ export function createStarfield(count = 7000, seed = 3) {
       void main(){ vC = color; gl_PointSize = size * uPixelRatio; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); ${V_TAIL} }`,
     fragmentShader: F_HEAD + /* glsl */`
       varying vec3 vC; uniform float uFade;
-      void main(){ ${F_DEPTH} float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(vC * (1.0 - d * 1.6) * uFade * 1.6, 1.0); }`,
+      void main(){ ${F_DEPTH} float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(vC * (1.0 - d * 1.6) * uFade * 0.85, 1.0); }`,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     transparent: true,
@@ -170,7 +170,7 @@ export function createTunnel() {
         float glow = 0.12 + 0.1 * sin(vUv.x * 6.2831 * 3.0 + uTime * 2.0);
         float fade = 1.0 - abs(vZ) / 1500.0;
         vec3 c = mix(vec3(0.2, 0.3, 1.0), vec3(0.6, 0.95, 1.0), s) * (streak * 3.0 + glow);
-        gl_FragColor = vec4(c * fade * uIntensity, 1.0);
+        gl_FragColor = vec4(c * fade * uIntensity * 0.55, 1.0);
       }`,
     transparent: true,
     depthWrite: false,

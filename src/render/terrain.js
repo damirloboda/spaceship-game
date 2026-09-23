@@ -65,7 +65,7 @@ export class Terrain {
     this.group.name = 'terrain';
     const faceArc = (Math.PI / 2) * surface.radius;
     // Leaf vertex spacing around 2.5-3 m.
-    this.maxLevel = maxLevel ?? Math.max(3, Math.ceil(Math.log2(faceArc / (grid * 2.8))));
+    this.maxLevel = maxLevel ?? Math.max(3, Math.round(Math.log2(faceArc / (grid * 2.8))));
     this.queue = [];
     this.nodes = new Map();
     this.roots = [];
@@ -92,7 +92,7 @@ export class Terrain {
     if (grid !== this.grid) {
       this.grid = grid;
       const faceArc = (Math.PI / 2) * this.surface.radius;
-      this.maxLevel = Math.max(3, Math.ceil(Math.log2(faceArc / (grid * 2.8))));
+      this.maxLevel = Math.max(3, Math.round(Math.log2(faceArc / (grid * 2.8))));
       for (const r of this.roots) {
         this.disposeChildren(r);
         this.freeMesh(r);
@@ -264,7 +264,7 @@ export class Terrain {
     node.children = null;
   }
 
-  split(node) {
+  splitNode(node) {
     const h = node.size / 2;
     node.children = [
       this.createNode(node.face, node.level + 1, node.u0, node.v0, h, node),
@@ -307,7 +307,7 @@ export class Terrain {
     const threshold = node.arc * this.split;
     const wantSplit = node.level < this.maxLevel && dist < threshold;
     if (wantSplit) {
-      if (!node.children) this.split(node);
+      if (!node.children) this.splitNode(node);
       const ready = node.children.every((c) => c.mesh);
       if (ready) {
         this.setNodeVisible(node, false);

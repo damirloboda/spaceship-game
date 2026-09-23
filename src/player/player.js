@@ -75,27 +75,28 @@ export class Player {
     }
     // First-person arms + multitool
     this.fpArms = new THREE.Group();
-    const armGeo = colorize(new THREE.CapsuleGeometry(0.055, 0.42, 2, 6).rotateX(Math.PI / 2), [suit.r * 0.9, suit.g * 0.9, suit.b * 0.9]);
-    const gloveGeo = colorize(new THREE.SphereGeometry(0.07, 8, 6), [0.25, 0.25, 0.28]);
+    // Forearms enter from the lower corners of the view, holding the multitool.
+    const armGeo = colorize(new THREE.CapsuleGeometry(0.032, 0.3, 2, 8).rotateX(Math.PI / 2), [suit.r * 0.9, suit.g * 0.9, suit.b * 0.9]);
+    const gloveGeo = colorize(new THREE.SphereGeometry(0.038, 8, 6), [0.22, 0.22, 0.25]);
     for (const side of [-1, 1]) {
       const arm = new THREE.Mesh(armGeo, this.modelMat);
-      arm.position.set(side * 0.22, -0.24, -0.3);
-      arm.rotation.y = side * 0.12;
+      arm.position.set(side * 0.2, -0.24, -0.34);
+      arm.rotation.set(0.35, side * 0.35, 0);
       const glove = new THREE.Mesh(gloveGeo, this.modelMat);
-      glove.position.set(side * 0.2, -0.22, -0.56);
+      glove.position.set(side * 0.14, -0.19, -0.5);
       this.fpArms.add(arm, glove);
     }
     const tool = [];
-    const body = new THREE.BoxGeometry(0.09, 0.12, 0.34); body.translate(0.2, -0.17, -0.62);
+    const body = new THREE.BoxGeometry(0.05, 0.065, 0.2); body.translate(0.14, -0.17, -0.56);
     tool.push(colorize(body, [0.3, 0.32, 0.36]));
-    const barrel = new THREE.CylinderGeometry(0.025, 0.03, 0.18, 8); barrel.rotateX(Math.PI / 2); barrel.translate(0.2, -0.14, -0.85);
+    const barrel = new THREE.CylinderGeometry(0.014, 0.018, 0.11, 8); barrel.rotateX(Math.PI / 2); barrel.translate(0.14, -0.155, -0.7);
     tool.push(colorize(barrel, [0.9, 0.5, 0.15]));
-    const screen = new THREE.BoxGeometry(0.07, 0.04, 0.1); screen.translate(0.2, -0.1, -0.55);
+    const screen = new THREE.BoxGeometry(0.04, 0.022, 0.06); screen.translate(0.14, -0.13, -0.52);
     tool.push(colorize(screen, [0.2, 0.9, 1.0]));
     this.tool = new THREE.Mesh(merge(tool), this.modelMat);
     this.fpArms.add(this.tool);
     this.toolTip = new THREE.Object3D();
-    this.toolTip.position.set(0.2, -0.14, -0.95);
+    this.toolTip.position.set(0.14, -0.155, -0.76);
     this.fpArms.add(this.toolTip);
   }
 

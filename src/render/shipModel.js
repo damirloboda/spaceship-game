@@ -12,6 +12,30 @@ export const RAMP_EXIT = new THREE.Vector3(0, -GEAR_HEIGHT, 14.2); // where the 
 export const RAMP_OPEN = 0.25;
 export const RAMP_CLOSED = -0.35;
 
+// Procedural instrument graphics for cockpit screens.
+function screenTexture(kind, color) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 112;
+  const g = c.getContext('2d');
+  g.fillStyle = '#04080c'; g.fillRect(0, 0, 256, 112);
+  g.strokeStyle = color; g.fillStyle = color; g.lineWidth = 2; g.globalAlpha = 0.9;
+  if (kind === 'radar') {
+    for (const r of [16, 32, 48]) { g.beginPath(); g.arc(128, 56, r, 0, Math.PI * 2); g.stroke(); }
+    g.beginPath(); g.moveTo(128, 56); g.lineTo(170, 26); g.stroke();
+    for (const [x, y] of [[150, 40], [100, 70], [140, 80]]) g.fillRect(x, y, 4, 4);
+  } else if (kind === 'bars') {
+    for (let i = 0; i < 8; i++) { const hgt = 20 + ((i * 37) % 60); g.fillRect(20 + i * 28, 100 - hgt, 18, hgt); }
+  } else {
+    g.beginPath();
+    for (let x = 0; x < 256; x += 4) g.lineTo(x, 56 + Math.sin(x * 0.06) * 24 + Math.sin(x * 0.21) * 8);
+    g.stroke();
+    g.font = '16px monospace'; g.fillText('LB CORE', 10, 20);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function box(w, h, d, x, y, z, color) {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(x, y, z);
@@ -61,13 +85,13 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   hullMesh.castShadow = true;
   hullMesh.receiveShadow = true;
   exterior.add(hullMesh);
-  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x1a3550, roughness: 0.05, metalness: 0.9, transparent: true, opacity: 0.55 });
+  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x1a3550, roughness: 0.18, metalness: 0.7, transparent: true, opacity: 0.55 });
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.6, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), canopyMat);
   canopy.scale.set(1.05, 0.7, 1.6);
   canopy.position.set(0, 2.25, -8.6);
   exterior.add(canopy);
   // Engine glow and exhaust
-  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 0.8, 1.0).multiplyScalar(3), toneMapped: false });
+  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 0.8, 1.0).multiplyScalar(1.4), toneMapped: false });
   const flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 0.7, 1.0), transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   const flames = [];
   for (const side of [-1, 1]) {
@@ -126,7 +150,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   solid(0.2, I.height, L, I.minX - 0.1, I.height / 2, 0, wallC);
   solid(0.2, I.height, L, I.maxX + 0.1, I.height / 2, 0, wallC);
   // Front: low console wall with window above (window is transparent glass)
-  solid(I.maxX - I.minX, 1.0, 0.3, 0, 0.5, I.minZ - 0.15, darkC);
+  solid(I.maxX - I.minX, 0.85, 0.3, 0, 0.425, I.minZ - 0.15, darkC);
   // Rear wall with hatch opening in the middle (x -0.9..0.9)
   solid(2.3, I.height, 0.2, -2.05, I.height / 2, I.maxZ + 0.1, wallC);
   solid(2.3, I.height, 0.2, 2.05, I.height / 2, I.maxZ + 0.1, wallC);
@@ -175,9 +199,10 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   const stripMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0, emissive: new THREE.Color(0.6, 0.85, 1.0), emissiveIntensity: 1.5 });
   interior.add(new THREE.Mesh(merge(lights), stripMat));
   // Cockpit window (inside view)
-  const windowMat = new THREE.MeshStandardMaterial({ color: 0x0a1a28, transparent: true, opacity: 0.18, roughness: 0.02, metalness: 0.9, side: THREE.DoubleSide, depthWrite: false });
-  const win = new THREE.Mesh(new THREE.PlaneGeometry(I.maxX - I.minX, 1.8), windowMat);
-  win.position.set(0, 1.9, I.minZ - 0.1);
+  // Unlit tinted glass: very glossy PBR glass produced NaNs that bloom smeared across the screen.
+  const windowMat = new THREE.MeshBasicMaterial({ color: 0x9fd4ff, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false });
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(I.maxX - I.minX, 1.95), windowMat);
+  win.position.set(0, 1.83, I.minZ - 0.1);
   interior.add(win);
   // Console screens
   const screenMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.9, 1.0), toneMapped: false });
@@ -228,9 +253,26 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   rscreen.rotation.y = -Math.PI / 2;
   rscreen.position.set(I.maxX - 0.21, 1.35, 3.2);
   interior.add(rscreen);
-  const lamp = new THREE.PointLight(0xcfe6ff, 0, 18, 1.5);
-  lamp.position.set(0, 2.4, 0);
+  const lamp = new THREE.PointLight(0xcfe6ff, 0, 16, 1);
+  lamp.position.set(0, 2.3, -3);
   interior.add(lamp);
+  const lamp2 = new THREE.PointLight(0xffd9a8, 0, 12, 1);
+  lamp2.position.set(0, 2.3, 6);
+  interior.add(lamp2);
+  // Pilot dashboard with instrument screens
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 0.6), new THREE.MeshStandardMaterial({ color: 0x1b1f26, roughness: 0.6, metalness: 0.4 }));
+  dash.position.set(0, 0.86, -10.5);
+  dash.rotation.x = 0.35;
+  interior.add(dash);
+  for (const [x, w, c, kind] of [[-1.05, 0.62, '#2ad4ff', 'radar'], [0, 0.7, '#7dff9a', 'bars'], [1.05, 0.62, '#ffb13d', 'graph']]) {
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.28), new THREE.MeshBasicMaterial({ map: screenTexture(kind, c), toneMapped: false }));
+    scr.position.set(x, 0.92, -10.45);
+    scr.rotation.x = -Math.PI / 2 + 0.35;
+    interior.add(scr);
+  }
+  const stickMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.45, 8), new THREE.MeshStandardMaterial({ color: 0x333840, metalness: 0.6, roughness: 0.4 }));
+  stickMesh.position.set(0.35, 0.72, -9.75);
+  interior.add(stickMesh);
 
   const interactables = [
     { id: 'seat', pos: new THREE.Vector3(0, 1, -8.9), radius: 1.3 },
@@ -245,9 +287,9 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   ];
 
   return {
-    root, exterior, interior, flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamp,
+    root, exterior, interior, flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
     nitro: { panel, doorPivot, canister, open: false, openT: 0 },
-    cockpitEye: new THREE.Vector3(0, 1.35, -9.3),
+    cockpitEye: new THREE.Vector3(0, 1.62, -9.1),
     materials: [hullMat, canopyMat, glowMat, flameMat, gearMat, intMat, stripMat, windowMat, screenMat, coreMat],
   };
 }

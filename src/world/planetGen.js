@@ -9,8 +9,8 @@ const toLin = (c) => c.map((v) => Math.pow(v, 2.2));
 export const BIOMES = {
   seabed: { color: [0.36, 0.33, 0.26], material: 'sand' },
   beach: { color: [0.8, 0.73, 0.52], material: 'sand' },
-  grassland: { color: [0.3, 0.5, 0.18], material: 'grass' },
-  forest: { color: [0.16, 0.34, 0.12], material: 'grass' },
+  grassland: { color: [0.36, 0.56, 0.2], material: 'grass' },
+  forest: { color: [0.2, 0.4, 0.15], material: 'grass' },
   savanna: { color: [0.58, 0.55, 0.3], material: 'grass' },
   wetland: { color: [0.25, 0.33, 0.18], material: 'mud' },
   rock: { color: [0.43, 0.41, 0.39], material: 'rock' },
@@ -181,13 +181,15 @@ export class PlanetSurface {
   colorAt(x, y, z, h, slope, out, offset) {
     const biome = this.biomeAt(x, y, z, h, slope);
     const base = BIOMES[biome].lin;
-    const v = 0.9 + this.nDetail.noise(x * 180, y * 180, z * 180) * 0.1;
+    // Two scales of tint variation so large fields do not look flat.
+    const v = 0.86 + this.nDetail.noise(x * 180, y * 180, z * 180) * 0.1 + this.nMoist.noise(x * 40, y * 40, z * 40) * 0.08;
+    const warm = this.nHills.noise(x * 25 + 3, y * 25, z * 25) * 0.06;
     // Blend rock into steep slopes for readability.
     const rockMix = clamp((slope - 0.25) * 2.2, 0, 0.6);
     const rock = BIOMES.rock.lin;
-    out[offset] = lerp(base[0], rock[0], rockMix) * v;
+    out[offset] = lerp(base[0], rock[0], rockMix) * v * (1 + warm);
     out[offset + 1] = lerp(base[1], rock[1], rockMix) * v;
-    out[offset + 2] = lerp(base[2], rock[2], rockMix) * v;
+    out[offset + 2] = lerp(base[2], rock[2], rockMix) * v * (1 - warm);
     return biome;
   }
 

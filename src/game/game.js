@@ -140,6 +140,7 @@ export class Game {
       let dt = (now - this.last) / 1000;
       this.last = now;
       if (!(dt > 0)) dt = 1 / 60;
+      this.realDt = dt;
       dt = Math.min(dt, 0.066);
       this.frame(dt, now);
     };
@@ -394,7 +395,7 @@ export class Game {
       const tp = target.anchor.position;
       const outward = tp.clone().normalize().multiplyScalar(-1);
       const side = new THREE.Vector3(0, 1, 0).cross(outward).normalize();
-      arrival = tp.clone().addScaledVector(outward, target.radius * 7).addScaledVector(side, target.radius * 2.5);
+      arrival = tp.clone().addScaledVector(outward, target.radius * 4.2).addScaledVector(side, target.radius * 1.6);
       look = tp.clone().sub(arrival).normalize();
     } else {
       arrival = new THREE.Vector3(2e6, 1e5, 0);
@@ -405,7 +406,7 @@ export class Game {
     this.ship.root.position.copy(arrival);
     this.ship.root.quaternion.identity();
     this.ship.pointAtWorld(look, 1);
-    this.ship.vel.copy(look).multiplyScalar(2.6e5 * 0.5);
+    this.ship.vel.copy(look).multiplyScalar(50);
     this.player.placeInShip(this.ship, new THREE.Vector3(0, 0, -8.9), new THREE.Vector3(0, 0, -1));
     this.ship.model.interior.add(this.player.object);
     this.updateCameraParent();
@@ -476,18 +477,34 @@ export class Game {
   // ---------------- main frame ----------------
   frame(dt, now) {
     this.input.pollGamepad();
+    const t0 = performance.now();
     if (this.state && !this.paused) {
       guard('update', () => this.update(dt));
     } else if (this.state) {
       guard('idle', () => this.idleUpdate(dt));
+    } else {
+      this.camera.rotation.y += dt * 0.01;
     }
+    const t1 = performance.now();
     guard('render', () => this.render(dt));
+    const t2 = performance.now();
+    this.perf = { update: t1 - t0, render: t2 - t1 };
     this.input.endFrame();
-    this.measure(dt);
+    this.measure(this.realDt || dt);
+  }
+
+  // Developer/test helper: advance the simulation without rendering.
+  simulate(seconds, step = 1 / 30) {
+    let first = true;
+    for (let t = 0; t < seconds; t += step) {
+      this.update(step);
+      if (first) { this.input.endFrame(); first = false; }
+    }
   }
 
   idleUpdate(dt) {
     // Keep the world visible behind menus without simulating gameplay.
+    this.handleGlobalInput();
     this.menus.update(dt);
     this.updateCamera(dt);
     this.updateWorldVisuals(0);
@@ -550,6 +567,13 @@ export class Game {
       else if (this.menus.current) this.menus.back();
       else this.menus.open('pause');
       return;
+    }
+    // Toggle keys also close the panel they opened.
+    const toggles = { map: 'map', inventory: 'inventory', journal: 'journal', help: 'help' };
+    if (this.menus.current) {
+      for (const [action, panel] of Object.entries(toggles)) {
+        if (i.pressed(action) && this.menus.current.name === panel) { this.menus.back(); return; }
+      }
     }
     if (this.menus.current) return;
     if (i.pressed('map')) this.menus.open('map');
@@ -682,7 +706,7 @@ export class Game {
       const near = dist < b.soi * 1.2;
       guard('terrain', () => b.terrain.update(local, b === active ? this.quality.budgetMs : near ? 1.5 : 0.4));
       if (near) {
-        guard('scatter', () => b.scatter.update(dt, b === active ? 2 : 0.5));
+        guard('scatter', () => b.scatter.update(dt, b === active ? 2 : 0.5, local));
         b.station?.update(dt);
       }
       if (b.waterMaterial) b.waterMaterial.userData.uniforms.uTime.value += dt;
@@ -734,6 +758,11 @@ export class Game {
       b.setFogEnabled(b === active && dist < b.atmoTop && !!b.def.atmosphere);
     }
     if (!active) uni.sun.intensity = 2.4 + (uni.system?.star.luminosity || 1) * 0.8;
+    // Inside the hull the sun is mostly blocked; cabin lamps take over.
+    const inside = this.mode === 'interior' || (this.mode === 'docked' && this.cameraMode !== 'third');
+    if (inside) uni.sun.intensity *= 0.18;
+    const cabin = this.mode === 'interior' || this.mode === 'pilot' || this.mode === 'docked';
+    if (this.ship) for (const l of this.ship.model.lamps) l.intensity = cabin ? (this.mode === 'pilot' ? 2 : 9) : 0;
     if (!active || !inAtmo) this.localHour = this.localHour ?? 12;
     const w = this.weather.update(dt, active, this.player?.mode === 'body' ? this.player.pos : null);
     // Fog: aerial perspective inside atmospheres, heavy under water.
@@ -748,7 +777,7 @@ export class Game {
       fog.color.copy(sky).multiplyScalar(0.8);
       const base = (1 / 14000) * active.def.atmosphere.density * (w?.fog || 1);
       fog.density = base * (1 - altFrac * 0.9);
-      this.stars.material.uniforms.uFade.value = 1 - daylight * (1 - altFrac);
+      this.stars.material.uniforms.uFade.value = 1 - THREE.MathUtils.smoothstep(daylight, 0.05, 0.35) * (1 - altFrac * altFrac);
       uni.ambient.color.copy(sky).lerp(new THREE.Color(1, 1, 1), 0.3);
       uni.ambient.intensity = 0.12 + daylight * 0.45;
     } else {
@@ -811,6 +840,8 @@ export class Game {
   }
 
   render() {
+    this.renderer.info.autoReset = false;
+    this.renderer.info.reset();
     if (this.useComposer && this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }
