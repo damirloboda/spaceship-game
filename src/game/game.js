@@ -31,6 +31,10 @@ import { Hud } from '../ui/hud.js';
 import { Menus } from '../ui/menus.js';
 import { TouchControls } from '../ui/touch.js';
 import { PhotoMode } from '../ui/photo.js';
+import { Environment } from '../render/environment.js';
+import { loadTerrainTextures } from '../render/textures.js';
+import { AsteroidFields } from '../render/asteroids.js';
+import { Weapons } from './weapons.js';
 
 const tv = new THREE.Vector3();
 const tv2 = new THREE.Vector3();
@@ -63,6 +67,8 @@ export class Game {
     this.camera.add(this.streaks, this.tunnel);
     this.streaks.position.set(0, 0, 0);
     this.tunnel.position.set(0, 0, 0);
+    this.environment = new Environment(this.renderer, this.background, this.scene);
+    loadTerrainTextures();
     this.input = new Input(canvas, this.settings);
     this.audio = new AudioSystem(this.settings);
     this.effects = new Effects(this);
@@ -182,6 +188,8 @@ export class Game {
     this.ship = new Ship(this);
     this.player = new Player(this);
     this.skimmer = new Skimmer(this);
+    this.asteroids = new AsteroidFields(this);
+    this.weapons = new Weapons(this);
     this.loadSystem(state.location.systemId);
     const placed = !state.newGame && this.restoreLocation();
     if (!placed) this.spawnAtHome(state.newGame);
@@ -204,6 +212,7 @@ export class Game {
   }
 
   loadSystem(systemId) {
+    this.weapons?.clear();
     this.effects.clearParticles();
     this.effects.clearFootprints();
     this.weather.group.removeFromParent();
@@ -214,6 +223,7 @@ export class Game {
       if (b.station) this.market(`${b.id}/station`);
     }
     this.director.onSystemLoaded(sys);
+    this.asteroids?.setup(this.universe);
     return sys;
   }
 
@@ -540,6 +550,9 @@ export class Game {
     this.ship.update(dt, input, piloting);
     if (this.mode !== 'vehicle') this.skimmer.update(dt, input, false);
     this.universe.updateSpin(dt);
+    this.universe.root.updateMatrixWorld();
+    guard('asteroids', () => this.asteroids.update(dt, this.ship.worldPosition(new THREE.Vector3())));
+    guard('weapons', () => this.weapons.update(dt, input));
     this.tools.update(dt, input);
     this.interaction = guard('interact', () => findInteraction(this)) || null;
     if (this.interaction && input.pressed('interact')) {
@@ -794,6 +807,21 @@ export class Game {
       fog.density = 0.06;
     }
     if (this.weather.flash > 0) uni.ambient.intensity += this.weather.flash * 3;
+    // Reflections: sky gradient inside atmospheres, the galaxy in space.
+    const sunDir = new THREE.Vector3().sub(camWorld).normalize();
+    const envState = { inAtmo: !!(active && inAtmo), sunDir, daylight };
+    if (envState.inAtmo) {
+      const upW = camWorld.clone().sub(active.anchor.getWorldPosition(new THREE.Vector3())).normalize();
+      const c = active.def.atmosphere.color;
+      const k = 0.15 + daylight * 0.85;
+      envState.up = upW;
+      envState.zenith = new THREE.Color(c[0] * 0.6, c[1] * 0.7, c[2]).multiplyScalar(k);
+      envState.horizon = fog.color.clone().multiplyScalar(1.4 * k + 0.05);
+      envState.ground = new THREE.Color(0.18, 0.2, 0.12).multiplyScalar(k);
+    }
+    const envKey = envState.inAtmo ? 'a' : 's';
+    guard('environment', () => this.environment.update(dt, envState, envKey !== this.lastEnvKey));
+    this.lastEnvKey = envKey;
     this.scene.backgroundIntensity = 1 - (inAtmo ? daylight * (1 - altFrac) * 0.9 : 0);
     // Shadows follow the player on quality presets that allow them.
     if (this.quality.shadows && this.activeBody && this.player?.mode === 'body') {
@@ -808,6 +836,28 @@ export class Game {
       uni.sun.castShadow = false;
     }
     this.updateSpeedEffects(dt);
+    this.updateFlare(camWorld, daylight, inAtmo);
+  }
+
+  updateFlare(camWorld, daylight, inAtmo) {
+    const sun = new THREE.Vector3(0, 0, 0);
+    if (this.universe.system?.star.type === 'black_hole' || this.photo.active && this.photo.opts.hideUI) { this.hud.setFlare(0, 0, 0); return; }
+    const p = sun.clone().project(this.camera);
+    if (p.z > 1 || Math.abs(p.x) > 1.3 || Math.abs(p.y) > 1.3) { this.hud.setFlare(0, 0, 0); return; }
+    // Occlusion by any planet (analytic ray-sphere test).
+    const dir = sun.clone().sub(camWorld);
+    const dist = dir.length();
+    dir.divideScalar(dist);
+    for (const b of this.universe.bodies) {
+      const c = b.anchor.getWorldPosition(new THREE.Vector3());
+      const oc = camWorld.clone().sub(c);
+      const bb = oc.dot(dir);
+      const h = bb * bb - (oc.lengthSq() - (b.radius * 1.002) ** 2);
+      if (h > 0 && -bb - Math.sqrt(h) > 0 && -bb - Math.sqrt(h) < dist) { this.hud.setFlare(0, 0, 0); return; }
+    }
+    const centered = 1 - Math.min(1, Math.hypot(p.x, p.y) / 1.4);
+    const k = (inAtmo ? 0.35 + 0.65 * daylight : 1) * (0.45 + 0.55 * centered) * (this.mode === 'interior' ? 0.3 : 1);
+    this.hud.setFlare(p.x, p.y, k);
   }
 
   updateSpeedEffects(dt) {

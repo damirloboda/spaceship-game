@@ -150,6 +150,9 @@ export class AudioSystem {
         case 'alarm': this.blip(700, 0.18, 'square', 0.08); setTimeout(() => this.blip(520, 0.18, 'square', 0.08), 200); break;
         case 'crash': this.burst(0.8, 200, 0.6); break;
         case 'signal': [0, 1, 2].forEach((i) => setTimeout(() => this.blip(1760 - i * 300, 0.12, 'sine', 0.08), i * 150)); break;
+        case 'laser': this.blip(1400, 0.09, 'sawtooth', 0.05, -1100); break;
+        case 'hit': this.burst(0.12, 2200, 0.12, 'bandpass'); break;
+        case 'explosion': this.burst(1.6, 220, 0.6); this.blip(90, 0.9, 'sine', 0.3, -60); break;
         case 'hurt': this.blip(220, 0.2, 'sawtooth', 0.12, -100); break;
         default: break;
       }

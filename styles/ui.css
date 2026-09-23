@@ -87,6 +87,8 @@ input, textarea { font-family: var(--mono); user-select: text; -webkit-user-sele
 .warnings { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .warn { color: var(--danger); font-weight: 700; letter-spacing: 0.25em; font-size: 14px; text-shadow: 0 0 8px rgba(255, 60, 60, 0.6); }
 .crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 0 3px #000; }
+.crosshair.ship { width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 1px solid rgba(255, 140, 110, 0.7); box-shadow: 0 0 6px rgba(255, 90, 60, 0.4); }
+.crosshair.ship::after { content: ''; position: absolute; left: 15px; top: 15px; width: 2px; height: 2px; background: #ff9a80; }
 .prompt { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); font-size: 16px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 12px; background: rgba(8, 14, 24, 0.75); border: 1px solid var(--panel-edge); opacity: 0; transition: opacity 0.15s; white-space: nowrap; }
 .prompt.on { opacity: 1; }
 .progress { position: absolute; left: 50%; top: calc(50% + 70px); width: 140px; height: 3px; transform: translateX(-50%); background: rgba(255, 255, 255, 0.15); opacity: 0; }
@@ -267,3 +269,13 @@ body.touch .prompt { top: calc(50% + 24px); font-size: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .banner, .toast, .radio-msg { transition: none; }
 }
+
+/* ---------- lens flare ---------- */
+.flare { position: absolute; inset: 0; opacity: 0; mix-blend-mode: screen; transition: opacity 0.25s; }
+.flare i { position: absolute; left: 0; top: 0; border-radius: 50%; }
+.flare .f0 { width: 380px; height: 380px; margin: -190px; background: radial-gradient(circle, rgba(255,245,225,0.55) 0%, rgba(255,210,150,0.18) 25%, rgba(255,180,120,0) 60%); }
+.flare .f1 { width: 70px; height: 70px; margin: -35px; background: radial-gradient(circle, rgba(140,200,255,0.18), rgba(140,200,255,0) 70%); }
+.flare .f2 { width: 26px; height: 26px; margin: -13px; background: rgba(255,200,140,0.18); }
+.flare .f3 { width: 120px; height: 120px; margin: -60px; border: 2px solid rgba(160,220,255,0.12); background: radial-gradient(circle, rgba(120,170,255,0) 55%, rgba(120,170,255,0.12)); }
+.flare .f4 { width: 44px; height: 44px; margin: -22px; background: radial-gradient(circle, rgba(255,150,220,0.2), rgba(255,150,220,0) 70%); }
+.flare .f5 { width: 180px; height: 180px; margin: -90px; background: radial-gradient(circle, rgba(255,230,160,0) 50%, rgba(255,230,160,0.08) 62%, rgba(255,230,160,0) 72%); }

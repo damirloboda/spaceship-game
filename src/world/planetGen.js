@@ -35,7 +35,9 @@ export const BIOMES = {
   storm: { color: [0.32, 0.3, 0.45], material: 'metal' },
   cloudtop: { color: [0.82, 0.78, 0.7], material: 'sand' },
 };
-for (const b of Object.values(BIOMES)) b.lin = toLin(b.color);
+// Detail texture layer per biome: 0 grass/organic, 1 rock, 2 sand/soil, 3 snow/ice.
+const LAYER_OF = { sand: 2, grass: 0, mud: 2, rock: 1, snow: 3, ice: 3, crystal: 1, organic: 0, metal: 1 };
+for (const b of Object.values(BIOMES)) { b.lin = toLin(b.color); b.layer = LAYER_OF[b.material] ?? 1; }
 
 export class PlanetSurface {
   constructor(def) {
@@ -191,6 +193,15 @@ export class PlanetSurface {
     out[offset + 1] = lerp(base[1], rock[1], rockMix) * v;
     out[offset + 2] = lerp(base[2], rock[2], rockMix) * v * (1 - warm);
     return biome;
+  }
+
+  // Detail-texture blend weights (grass, rock, sand, snow) for a biome and slope.
+  layerWeights(biome, slope, out, offset) {
+    const rock = clamp((slope - 0.22) * 2.5, 0, 1);
+    const l = BIOMES[biome].layer;
+    out[offset] = 0; out[offset + 1] = 0; out[offset + 2] = 0; out[offset + 3] = 0;
+    out[offset + l] += 1 - rock;
+    out[offset + 1] += rock;
   }
 
   materialAt(x, y, z) {

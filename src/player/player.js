@@ -48,8 +48,8 @@ export class Player {
     const p = this.game.state.profile;
     const suit = new THREE.Color(p.suit);
     const visor = new THREE.Color(p.visor);
-    this.modelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2 });
-    this.model = humanoidModel([[suit.r, suit.g, suit.b], [visor.r * 0.6, visor.g * 0.6, visor.b * 0.6]], 1.8, this.modelMat);
+    this.modelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.15, envMapIntensity: 1.2 });
+    this.model = humanoidModel([[suit.r, suit.g, suit.b], [visor.r * 0.6, visor.g * 0.6, visor.b * 0.6]], 1.8, this.modelMat, { suit: true, accent: [visor.r, visor.g, visor.b] });
     this.object.add(this.model);
     // Jetpack on the back
     const jp = [];
@@ -277,9 +277,9 @@ export class Player {
     const ship = this.game.ship;
     if (ship && ship.body === this.body && ship.landed) {
       const local = ship.model.root.worldToLocal(this.object.parent.localToWorld(this.pos.clone()));
-      if (Math.abs(local.x) < 4.2 && local.z > -13 && local.z < 12.5 && local.y < 4.5 && local.y > -3.5) {
+      if (Math.abs(local.x) < 4.6 && local.z > -19.5 && local.z < 12.8 && local.y < 4.5 && local.y > -3.5) {
         // push sideways out of the hull
-        const sx = Math.sign(local.x || 1) * (4.2 - Math.abs(local.x));
+        const sx = Math.sign(local.x || 1) * (4.6 - Math.abs(local.x));
         const worldPush = new THREE.Vector3(sx, 0, 0).applyQuaternion(ship.model.root.getWorldQuaternion(new THREE.Quaternion()));
         const localPush = worldPush.applyQuaternion(this.body.spin.getWorldQuaternion(new THREE.Quaternion()).invert());
         push.add(localPush);

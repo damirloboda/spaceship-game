@@ -42,6 +42,7 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
 | Jump · jetpack (hold) | Space | A | JUMP |
 | Interact | E | X | USE |
 | Scan · mine | F · LMB or R | Y · RT | SCAN · MINE |
+| Ship lasers | LMB or R (in cockpit) | RT | FIRE |
 | Ship throttle · roll | W/S · A/D, Q/Z | LT/RT | stick |
 | Overdrive · Lightbreak | Shift · B | RB · R3 | BOOST · LIGHT BREAK |
 | Map · inventory · journal | M · I · J | Select · D-up | MAP · BAG |
@@ -67,6 +68,14 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   damage and repair, fuel, power distribution, Nitro/Overdrive, Lightbreak
   (in-system cruise and interstellar jumps), autopilot, auto/emergency landing,
   docking at the orbital station.
+- **Graphics**: photo-scanned CC0 textures (Poly Haven) blended triplanar over
+  procedural biomes with normal mapping, image-based lighting (reflections of
+  the sky or the galaxy), animated ocean waves with foam, a faceted fighter
+  hull with PBR metal panels and a glass canopy, engine plumes, lens flare,
+  bloom.
+- **Asteroid fields** inside planetary rings and star-system belts: streamed
+  around the ship, spinning, collidable; shoot them with the twin wing
+  lasers and they explode into physically simulated debris and ore.
 - **Jetpack** with fuel, heat/overheat and gravity-dependent thrust.
 - **Economy & reputation**: supply/demand prices, reputation tiers that change
   prices and access, crafting, research, museum, bases with storage and a
@@ -92,3 +101,7 @@ node tests/e2e/gameplay.mjs   # real keyboard input: walk, scan, mine, buy, fly,
 ## Project layout
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Credits
+
+Textures in `assets/textures` are derived from [Poly Haven](https://polyhaven.com) assets (CC0). Everything else — models, sounds, shaders — is generated in code.

@@ -204,34 +204,99 @@ export function createRingMaterial({ inner, outer, color, planetRadius, seed = 1
   });
 }
 
-// Wave-perturbed water using the standard PBR pipeline (fog, shadows, lights).
+// Animated ocean: vertex waves (displaced along the planet normal, fading
+// with distance), analytic wave normals, fine ripples and PBR reflections.
 export function createWaterMaterial(color = [0.03, 0.18, 0.3]) {
   const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(color[0], color[1], color[2]),
-    roughness: 0.08,
-    metalness: 0.2,
+    roughness: 0.06,
+    metalness: 0.0,
     transparent: true,
-    opacity: 0.86,
+    opacity: 0.9,
+    envMapIntensity: 1.4,
   });
   const uniforms = { uTime: { value: 0 } };
   mat.userData.uniforms = uniforms;
+  const WAVES = /* glsl */`
+    const int NW = 4;
+    vec3 waveDir(int i) {
+      if (i == 0) return normalize(vec3(0.8, 0.3, 0.5));
+      if (i == 1) return normalize(vec3(-0.4, 0.7, 0.6));
+      if (i == 2) return normalize(vec3(0.2, -0.6, 0.9));
+      return normalize(vec3(-0.9, -0.2, 0.3));
+    }
+    float waveK(int i) { return i == 0 ? 0.11 : i == 1 ? 0.17 : i == 2 ? 0.29 : 0.47; }
+    float waveA(int i) { return i == 0 ? 0.55 : i == 1 ? 0.32 : i == 2 ? 0.16 : 0.08; }
+  `;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uniforms.uTime;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed,1.0)).xyz;');
+      .replace('#include <common>', `#include <common>
+        uniform float uTime;
+        attribute vec3 lpos;
+        varying vec3 vWPos;
+        varying float vFoam;
+        ${WAVES}`)
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+        vec3 wN = normalize(objectNormal);
+        float wAmp = 1.0 - smoothstep(150.0, 900.0, length((modelViewMatrix * vec4(position, 1.0)).xyz));
+        vec3 wGrad = vec3(0.0);
+        float wH = 0.0;
+        for (int i = 0; i < NW; i++) {
+          vec3 d = waveDir(i);
+          float k = waveK(i);
+          float ph = dot(lpos, d) * k + uTime * sqrt(9.8 * k) * 1.1;
+          wH += waveA(i) * sin(ph);
+          wGrad += waveA(i) * k * cos(ph) * (d - wN * dot(d, wN));
+        }
+        wH *= wAmp; wGrad *= wAmp;
+        objectNormal = normalize(wN - wGrad);
+        vFoam = smoothstep(0.55, 0.95, wH);`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        transformed += wN * wH;`)
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = lpos;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWPos;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWPos;\nvarying float vFoam;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85, 0.92, 0.95), vFoam * 0.5);`)
       .replace('#include <normal_fragment_maps>', /* glsl */`
         #include <normal_fragment_maps>
-        vec3 wp = vWPos * 0.35;
-        float w1 = sin(wp.x * 1.1 + uTime * 1.3) * cos(wp.z * 0.9 + uTime * 1.1);
-        float w2 = sin(wp.x * 2.7 - uTime * 2.1 + wp.y * 1.9) * 0.5;
-        float w3 = cos(wp.z * 3.3 + uTime * 1.7 + wp.y * 2.3) * 0.5;
-        normal = normalize(normal + vec3(w1 + w2, w2 * w3, w3 - w1) * 0.06);
+        vec3 wp = vWPos * 0.9;
+        float r1 = sin(wp.x * 1.3 + uTime * 1.9) * cos(wp.z * 1.1 - uTime * 1.3);
+        float r2 = sin(wp.y * 2.9 - uTime * 2.4 + wp.x * 1.7) * 0.5;
+        float r3 = cos(wp.z * 3.7 + uTime * 2.1 + wp.y * 2.3) * 0.5;
+        float rf = 1.0 - smoothstep(20.0, 160.0, length(vViewPosition));
+        normal = normalize(normal + vec3(r1 + r2, r2 * r3, r3 - r1) * 0.05 * rf);
       `);
   };
+  mat.customProgramCacheKey = () => 'ocean-waves';
   return mat;
+}
+
+// Engine exhaust plume: bright core fading along its length, flickering.
+export function createExhaustMaterial(color = [0.35, 0.7, 1.0]) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uPower: { value: 0.3 }, uColor: { value: new THREE.Color(...color) } },
+    vertexShader: V_HEAD + /* glsl */`
+      varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+      void main(){ vUv = uv; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; ${V_TAIL} }`,
+    fragmentShader: F_HEAD + /* glsl */`
+      uniform float uTime; uniform float uPower; uniform vec3 uColor; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+      void main(){
+        ${F_DEPTH}
+        float along = vUv.y;            // 1 at the nozzle, 0 at the tip
+        float edge = pow(abs(dot(vN, vV)), 1.5);
+        float flick = 0.85 + 0.15 * sin(uTime * 60.0 + along * 20.0) * sin(uTime * 37.0);
+        float bands = 0.75 + 0.25 * sin(along * 40.0 - uTime * 50.0);
+        float a = pow(along, 1.8) * edge * flick * uPower * bands;
+        vec3 core = mix(uColor, vec3(1.0), pow(along, 5.0));
+        gl_FragColor = vec4(core * a * 3.0, a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
 }
 
 export function createStarGlowMaterial(color) {

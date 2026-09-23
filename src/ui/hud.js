@@ -7,9 +7,9 @@ import { itemDef } from '../game/items.js';
 import { TUTORIAL } from '../game/director.js';
 
 const KEYS = {
-  keyboard: { move: 'WASD', look: 'MOUSE', jump: 'SPACE', jet: 'HOLD SPACE', scan: 'F', mine: 'LMB / R', interact: 'E', map: 'M', inventory: 'I', boost: 'SHIFT', lightbreak: 'B', throttle: 'W/S', view: 'V', autopilot: 'L', target: 'T', photo: 'P' },
-  gamepad: { move: 'L-STICK', look: 'R-STICK', jump: 'A', jet: 'HOLD A', scan: 'Y', mine: 'RT', interact: 'X', map: 'SELECT', inventory: 'D-UP', boost: 'RB', lightbreak: 'R3', throttle: 'LT/RT', view: 'LB', autopilot: 'D-RIGHT', target: '—', photo: 'D-DOWN' },
-  touch: { move: '◎', look: '⇆', jump: 'JUMP', jet: 'HOLD JUMP', scan: 'SCAN', mine: 'MINE', interact: 'USE', map: 'MAP', inventory: 'BAG', boost: 'BOOST', lightbreak: 'LB', throttle: '◎ ↕', view: 'VIEW', autopilot: 'AUTO', target: '—', photo: '📷' },
+  keyboard: { move: 'WASD', look: 'MOUSE', jump: 'SPACE', jet: 'HOLD SPACE', scan: 'F', mine: 'LMB / R', fire: 'LMB / R', interact: 'E', map: 'M', inventory: 'I', boost: 'SHIFT', lightbreak: 'B', throttle: 'W/S', view: 'V', autopilot: 'L', target: 'T', photo: 'P' },
+  gamepad: { move: 'L-STICK', look: 'R-STICK', jump: 'A', jet: 'HOLD A', scan: 'Y', mine: 'RT', fire: 'RT', interact: 'X', map: 'SELECT', inventory: 'D-UP', boost: 'RB', lightbreak: 'R3', throttle: 'LT/RT', view: 'LB', autopilot: 'D-RIGHT', target: '—', photo: 'D-DOWN' },
+  touch: { move: '◎', look: '⇆', jump: 'JUMP', jet: 'HOLD JUMP', scan: 'SCAN', mine: 'MINE', fire: 'FIRE', interact: 'USE', map: 'MAP', inventory: 'BAG', boost: 'BOOST', lightbreak: 'LB', throttle: '◎ ↕', view: 'VIEW', autopilot: 'AUTO', target: '—', photo: '📷' },
 };
 
 export class Hud {
@@ -39,7 +39,8 @@ export class Hud {
     E.save = h('div', { class: 'saveicon' }, '◈');
     E.radar = h('canvas', { class: 'radar', width: 120, height: 120 });
     E.info = h('div', { class: 'locinfo' });
-    this.root.append(E.water, E.vignette, E.flash, E.markers, E.compass, E.objective, E.radio, E.vitals, E.ship, E.warnings, E.crosshair, E.prompt, E.progress, E.banner, E.toasts, E.fps, E.signal, E.save, E.radar, E.info);
+    E.flare = h('div', { class: 'flare' }, ...[0, 1, 2, 3, 4, 5].map((i) => h('i', { class: `f${i}` })));
+    this.root.append(E.flare, E.water, E.vignette, E.flash, E.markers, E.compass, E.objective, E.radio, E.vitals, E.ship, E.warnings, E.crosshair, E.prompt, E.progress, E.banner, E.toasts, E.fps, E.signal, E.save, E.radar, E.info);
     this.markerPool = [];
     this.bannerQueue = [];
     this.bannerTimer = 0;
@@ -115,6 +116,20 @@ export class Hud {
     this.signalStrength = s;
   }
 
+  // Screen-space lens flare: ghosts along the line from the sun through the centre.
+  setFlare(x, y, intensity) {
+    const f = this.el.flare;
+    if (intensity <= 0.01) { f.style.opacity = '0'; return; }
+    const w = this.root.clientWidth, hgt = this.root.clientHeight;
+    const sx = (x + 1) / 2 * w, sy = (1 - y) / 2 * hgt;
+    const cx = w / 2, cy = hgt / 2;
+    const k = [0, 0.35, 0.7, 1.15, 1.45, 1.8];
+    [...f.children].forEach((el, i) => {
+      el.style.transform = `translate(${sx + (cx - sx) * k[i]}px, ${sy + (cy - sy) * k[i]}px)`;
+    });
+    f.style.opacity = String(Math.min(1, intensity));
+  }
+
   flashSaveIcon() {
     this.el.save.classList.remove('on');
     void this.el.save.offsetWidth;
@@ -181,6 +196,7 @@ export class Hud {
         this.row('hud.nitro', sys.nitro.installed ? sys.nitro.charge : 0, ship.overdrive ? 'nitro on' : 'nitro'),
         h('div', { class: `lb ${lbState === 'ready' ? 'ready' : ''} ${ship.lb.phase !== 'none' ? 'active' : ''}` }, lbLabel),
         this.row('hud.hull', sys.modules.hull.hp, sys.modules.hull.hp < 30 ? 'bad' : ''),
+        this.row(g.weapons?.overheated ? 'hud.overheat' : 'hud.weapons', g.weapons?.heat || 0, g.weapons?.overheated ? 'bad blink' : 'heat'),
         this.row('hud.shield', sys.shieldCharge, 'shield'),
         ship.overdrive ? h('div', { class: 'od' }, t('hud.overdrive')) : '',
         ship.autopilot ? h('div', { class: 'ap' }, t(ship.autopilot.mode === 'land' ? 'hud.autoland' : 'hud.autopilot_on')) : '',
@@ -209,7 +225,8 @@ export class Hud {
     E.signal.style.opacity = String(this.signalStrength || 0);
     E.signal.textContent = this.signalStrength ? `${t('hud.signal')} ${'▮'.repeat(Math.ceil((this.signalStrength || 0) * 8))}` : '';
     E.fps.textContent = g.settings.showFps ? `${Math.round(g.fps)} FPS · ${Math.round(g.dynScale * 100)}%` : '';
-    E.crosshair.style.display = mode === 'foot' || mode === 'interior' ? '' : 'none';
+    E.crosshair.style.display = mode === 'foot' || mode === 'interior' || mode === 'pilot' ? '' : 'none';
+    E.crosshair.classList.toggle('ship', mode === 'pilot');
     // Location line
     const body = g.player.mode === 'body' ? g.player.body : g.ship.body;
     const sysName = g.universe.system?.name || '';

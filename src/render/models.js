@@ -240,7 +240,7 @@ export function creatureModel(sp, material) {
   return group;
 }
 
-export function humanoidModel(colors, height = 1.8, material) {
+export function humanoidModel(colors, height = 1.8, material, options = {}) {
   const [primary, secondary] = colors;
   const s = height / 1.8;
   const parts = [];
@@ -250,12 +250,35 @@ export function humanoidModel(colors, height = 1.8, material) {
   parts.push(colorize(head, secondary || [0.8, 0.7, 0.6]));
   const collar = new THREE.TorusGeometry(0.15 * s, 0.04 * s, 5, 10); collar.rotateX(Math.PI / 2); collar.translate(0, 1.52 * s, 0);
   parts.push(colorize(collar, secondary || primary));
+  if (options.suit) {
+    // Space-suit details: helmet shell, dark visor, chest unit, shoulder pads, belt.
+    const helmet = new THREE.SphereGeometry(0.2 * s, 14, 10); helmet.translate(0, 1.73 * s, 0.01);
+    parts.push(colorize(helmet, primary));
+    const visor = new THREE.SphereGeometry(0.17 * s, 14, 8, -Math.PI * 0.35, Math.PI * 0.7, Math.PI * 0.3, Math.PI * 0.38); visor.translate(0, 1.73 * s, -0.045 * s);
+    parts.push(colorize(visor, [0.05, 0.07, 0.1]));
+    const chest = new THREE.BoxGeometry(0.26 * s, 0.16 * s, 0.08 * s); chest.translate(0, 1.3 * s, -0.2 * s);
+    parts.push(colorize(chest, [0.3, 0.32, 0.36]));
+    const light = new THREE.BoxGeometry(0.06 * s, 0.04 * s, 0.02 * s); light.translate(0.07 * s, 1.33 * s, -0.245 * s);
+    parts.push(colorize(light, options.accent || [0.2, 0.9, 1.0]));
+    for (const x of [-1, 1]) {
+      const pad = new THREE.SphereGeometry(0.1 * s, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2); pad.scale(1.2, 0.7, 1); pad.translate(x * 0.27 * s, 1.44 * s, 0);
+      parts.push(colorize(pad, primary.map((v) => v * 0.85)));
+    }
+    const belt = new THREE.CylinderGeometry(0.235 * s, 0.235 * s, 0.07 * s, 12); belt.translate(0, 0.93 * s, 0);
+    parts.push(colorize(belt, [0.25, 0.26, 0.28]));
+  }
   const g = new THREE.Group();
   const body = new THREE.Mesh(merge(parts), material);
   body.castShadow = true;
   g.add(body);
   const limb = (r, len, color) => colorize(new THREE.CapsuleGeometry(r, len, 2, 6).translate(0, -len / 2 - r, 0), color);
-  const legGeo = limb(0.08 * s, 0.62 * s, primary.map((v) => v * 0.7));
+  const legGeo = limb(0.08 * s, 0.62 * s, primary.map((v) => v * (options.suit ? 0.92 : 0.7)));
+  if (options.suit) {
+    const boot = colorize(new THREE.BoxGeometry(0.13 * s, 0.12 * s, 0.24 * s).translate(0, -0.8 * s, -0.04 * s), [0.22, 0.23, 0.25]);
+    legGeo.deleteAttribute('uv');
+    const merged = merge([legGeo, boot]);
+    legGeo.copy(merged);
+  }
   const armGeo = limb(0.06 * s, 0.5 * s, primary.map((v) => v * 0.9));
   const limbs = {};
   for (const [name, geo, x, y] of [['legL', legGeo, -0.11, 0.85], ['legR', legGeo, 0.11, 0.85], ['armL', armGeo, -0.3, 1.46], ['armR', armGeo, 0.3, 1.46]]) {

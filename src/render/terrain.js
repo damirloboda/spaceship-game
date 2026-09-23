@@ -134,6 +134,8 @@ export class Terrain {
     const pos = new Float32Array(total * 3);
     const nor = new Float32Array(total * 3);
     const col = new Float32Array(total * 3);
+    const lpos = new Float32Array(total * 3);
+    const lay = new Float32Array(total * 4);
     const c = node.center;
     for (let j = 0; j <= N; j++) {
       for (let i = 0; i <= N; i++) {
@@ -152,7 +154,9 @@ export class Terrain {
         nor[k * 3] = nx; nor[k * 3 + 1] = ny; nor[k * 3 + 2] = nz;
         const cosA = Math.min(1, Math.max(0.05, nx * dx + ny * dy + nz * dz));
         const slope = Math.sqrt(1 - cosA * cosA) / cosA;
-        s.colorAt(dx, dy, dz, hs[k], slope, col, k * 3);
+        const biome = s.colorAt(dx, dy, dz, hs[k], slope, col, k * 3);
+        s.layerWeights(biome, slope, lay, k * 4);
+        lpos[k * 3] = ext[e]; lpos[k * 3 + 1] = ext[e + 1]; lpos[k * 3 + 2] = ext[e + 2];
       }
     }
     // Skirts hide cracks between neighbouring LOD levels.
@@ -170,6 +174,8 @@ export class Terrain {
       pos[sk * 3 + 2] = pos[k * 3 + 2] - dirs[k * 3 + 2] * depth;
       nor[sk * 3] = nor[k * 3]; nor[sk * 3 + 1] = nor[k * 3 + 1]; nor[sk * 3 + 2] = nor[k * 3 + 2];
       col[sk * 3] = col[k * 3]; col[sk * 3 + 1] = col[k * 3 + 1]; col[sk * 3 + 2] = col[k * 3 + 2];
+      lpos[sk * 3] = pos[sk * 3] + c.x; lpos[sk * 3 + 1] = pos[sk * 3 + 1] + c.y; lpos[sk * 3 + 2] = pos[sk * 3 + 2] + c.z;
+      for (let q = 0; q < 4; q++) lay[sk * 4 + q] = lay[k * 4 + q];
     }
     // Winding: check the first cell against the outward direction.
     const flip = this.cellFlip(pos, dirs, N);
@@ -193,6 +199,8 @@ export class Terrain {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('lpos', new THREE.BufferAttribute(lpos, 3));
+    geo.setAttribute('layers', new THREE.BufferAttribute(lay, 4));
     const all = idx.concat(skirtIdx);
     geo.setIndex(total > 65535 ? new THREE.Uint32BufferAttribute(all, 1) : new THREE.Uint16BufferAttribute(all, 1));
     geo.computeBoundingSphere();
@@ -213,8 +221,11 @@ export class Terrain {
         wpos[k * 3 + 2] = dirs[k * 3 + 2] * R - c.z;
         wnor[k * 3] = dirs[k * 3]; wnor[k * 3 + 1] = dirs[k * 3 + 1]; wnor[k * 3 + 2] = dirs[k * 3 + 2];
       }
+      const wl = new Float32Array(main * 3);
+      for (let k = 0; k < main * 3; k++) wl[k] = dirs[k] * R;
       const wg = new THREE.BufferGeometry();
       wg.setAttribute('position', new THREE.BufferAttribute(wpos, 3));
+      wg.setAttribute('lpos', new THREE.BufferAttribute(wl, 3));
       wg.setAttribute('normal', new THREE.BufferAttribute(wnor, 3));
       wg.setIndex(main > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
       wg.computeBoundingSphere();

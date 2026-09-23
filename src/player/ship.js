@@ -187,6 +187,7 @@ export class Ship {
     if (this.overdrive) game.state.addXP('piloting', dt * 0.4);
     this.collideTerrain(dt);
     this.collideStation();
+    this.collideAsteroids();
     if (this.overdrive) this.shake = Math.max(this.shake, 0.25);
   }
 
@@ -271,6 +272,24 @@ export class Ship {
       this.vel.reflect(worldAway).multiplyScalar(0.3);
       const broken = this.systems.applyDamage(Math.min(30, this.speed * 0.3));
       this.game.onShipDamaged(broken, this.speed * 0.3);
+    }
+  }
+
+  collideAsteroids() {
+    const hit = this.game.asteroids?.collide(this.worldPosition(new THREE.Vector3()), 11);
+    if (!hit) return;
+    const parentQ = this.root.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const n = hit.normal.clone().applyQuaternion(parentQ);
+    this.root.position.addScaledVector(n, hit.depth + 0.5);
+    const vn = this.vel.dot(n);
+    if (vn < 0) {
+      this.vel.addScaledVector(n, -vn * 1.5).multiplyScalar(0.6);
+      const impact = -vn;
+      if (impact > 15) {
+        const broken = this.systems.applyDamage(Math.min(60, impact * 0.25));
+        this.game.onShipDamaged(broken, impact * 0.25);
+      }
+      this.shake = 1;
     }
   }
 
@@ -475,8 +494,10 @@ export class Ship {
     m.ramp.rotation.x += (rampTarget - m.ramp.rotation.x) * Math.min(1, dt * 2);
     const thrust = this.landed || this.docked ? 0.05 : 0.25 + this.throttle * 0.75 + (this.overdrive ? 1.2 : 0) + (this.lb.phase !== 'none' ? 2 : 0);
     for (const f of m.flames) {
-      f.scale.set(1, 1, thrust * (0.9 + Math.random() * 0.2));
-      f.visible = thrust > 0.1;
+      f.scale.set(1, 1, Math.max(0.2, thrust) * (0.95 + Math.random() * 0.1));
+      f.visible = thrust > 0.06;
+      f.material.uniforms.uTime.value += dt;
+      f.material.uniforms.uPower.value = Math.min(1.6, 0.35 + thrust * 0.6);
     }
     const fieldTarget = this.lb.phase === 'spool' || this.lb.phase === 'tunnel' || this.lb.phase === 'cruise' ? 1 : this.overdrive ? 0.45 : this.lb.phase === 'exit' ? 0.5 : 0;
     const u = m.fieldMat.uniforms;

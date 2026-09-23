@@ -11,6 +11,7 @@ import { City, CITY_RADIUS } from '../render/city.js';
 import { Station } from '../render/station.js';
 import { createAtmosphereMaterial, createCloudMaterial, createRingMaterial, createWaterMaterial } from '../render/shaders.js';
 import { colorize, merge } from '../render/models.js';
+import { applyTerrainDetail } from '../render/textures.js';
 
 const tmpV = new THREE.Vector3();
 
@@ -45,6 +46,8 @@ export class Body {
       this.terrainMaterial.emissive = new THREE.Color(0.35, 0.06, 0.0);
     }
     if (def.type === 'bioluminescent') this.terrainMaterial.emissive = new THREE.Color(0.0, 0.05, 0.06);
+    this.terrainMaterial.envMapIntensity = 0.35;
+    if (q.detail) applyTerrainDetail(this.terrainMaterial, { strength: def.type === 'barren' || def.type === 'crystal' ? 0.8 : 1 });
     this.waterMaterial = def.ocean ? createWaterMaterial(def.type === 'toxic' ? [0.12, 0.25, 0.05] : [0.02, 0.14, 0.26]) : null;
     this.flora = generateFlora(def, 20);
     this.faunaSpecies = generateFauna(def, 10);

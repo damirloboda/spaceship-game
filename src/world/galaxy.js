@@ -160,9 +160,13 @@ export function generateSystem(id) {
     const ang = aRng.range(0, Math.PI * 2);
     anomalies.push({ type: 'derelict', id: `${id}/dr`, position: [Math.cos(ang) * 3e6, 1e5, Math.sin(ang) * 3e6], radius: 60 });
   }
+  const beltRng = rng.fork('belt');
+  const belt = bodies.length > 1 && beltRng.chance(0.6)
+    ? { radius: Math.hypot(...bodies[0].position.filter((_, i) => i !== 1)) * beltRng.range(0.7, 0.9), width: beltRng.range(4e4, 1.2e5), thickness: beltRng.range(2000, 6000), color: beltRng.pick([[0.62, 0.5, 0.4], [0.75, 0.55, 0.35], [0.5, 0.48, 0.47], [0.7, 0.62, 0.55]]) }
+    : null;
   const hasStation = summary.starType !== 'black_hole' && rng.fork('station').chance(0.55) && bodies.length > 0;
   if (hasStation) bodies[0].station = { altitude: 16000 };
-  return { ...summary, star, bodies, anomalies };
+  return { ...summary, star, bodies, anomalies, belt };
 }
 
 function makeStar(type, rng) {
@@ -375,6 +379,8 @@ function homeSystem() {
     ...summary,
     star,
     bodies: [aurel, tessa, pyra, glacia],
+    // Rust-coloured belt between Aurel and the star; the ship crosses it on the way to Glacia.
+    belt: { radius: 5.35e6, width: 9e4, thickness: 4000, color: [0.78, 0.55, 0.36] },
     anomalies: [{ type: 'derelict', id: 'home/derelict', position: [5.2e6, 3e5, 6e5], radius: 60, hidden: true }],
   };
 }

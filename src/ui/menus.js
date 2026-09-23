@@ -847,7 +847,7 @@ export class Menus {
     const g = this.game;
     const k = g.hud.keys();
     const rows = ['move', 'look', 'jump', 'jet', 'scan', 'mine', 'interact', 'map', 'inventory', 'view', 'photo'].map((a) => h('div', { class: 'srow' }, h('span', {}, t(`help.${a}`)), h('b', { class: 'key' }, k[a])));
-    const ship = ['throttle', 'boost', 'lightbreak', 'autopilot', 'target'].map((a) => h('div', { class: 'srow' }, h('span', {}, t(`help.${a}`)), h('b', { class: 'key' }, k[a])));
+    const ship = ['throttle', 'fire', 'boost', 'lightbreak', 'autopilot', 'target'].map((a) => h('div', { class: 'srow' }, h('span', {}, t(`help.${a}`)), h('b', { class: 'key' }, k[a])));
     return this.panel('help.title', [h('div', { class: 'cols' }, h('div', {}, h('h3', {}, t('help.on_foot')), ...rows), h('div', {}, h('h3', {}, t('help.ship')), ...ship, h('div', { class: 'srow' }, h('span', {}, t('help.roll')), h('b', { class: 'key' }, 'A/D · Q/Z')), h('div', { class: 'srow' }, h('span', {}, t('help.vertical')), h('b', { class: 'key' }, 'SPACE / CTRL')), h('p', { class: 'muted' }, t('help.tip'))))], { wide: true });
   }
 

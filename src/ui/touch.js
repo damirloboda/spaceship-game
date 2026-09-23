@@ -6,7 +6,7 @@ import { h } from './dom.js';
 const LAYOUTS = {
   foot: [['jump', 'touch.jump'], ['interact', 'touch.use'], ['scan', 'touch.scan'], ['mine', 'touch.mine'], ['sprint', 'touch.sprint'], ['crouch', 'touch.crouch']],
   interior: [['jump', 'touch.jump'], ['interact', 'touch.use'], ['sprint', 'touch.sprint']],
-  pilot: [['boost', 'touch.boost'], ['lightbreak', 'touch.lightbreak'], ['interact', 'touch.use'], ['scan', 'touch.scan'], ['jump', 'touch.up'], ['crouch', 'touch.down'], ['autopilot', 'touch.auto'], ['cutThrottle', 'touch.stop']],
+  pilot: [['mine', 'touch.fire'], ['boost', 'touch.boost'], ['lightbreak', 'touch.lightbreak'], ['interact', 'touch.use'], ['scan', 'touch.scan'], ['jump', 'touch.up'], ['crouch', 'touch.down'], ['autopilot', 'touch.auto'], ['cutThrottle', 'touch.stop']],
   vehicle: [['interact', 'touch.use'], ['jump', 'touch.jump'], ['sprint', 'touch.boost'], ['scan', 'touch.scan']],
   docked: [['interact', 'touch.use']],
 };
