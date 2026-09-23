@@ -16,6 +16,11 @@ const page = await browser.newPage(vp);
 await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', async (route) => { const rel = route.request().url().split('three@0.170.0/')[1]; try { route.fulfill({ body: await readFile(join(ROOT, 'node_modules/three', rel)), contentType: 'text/javascript' }); } catch { route.abort(); } });
 await page.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
 await page.route('https://fonts.gstatic.com/**', (r) => r.abort());
+// MODELS_TXT=<dir>: simulate a host that only serves base64 .glb.txt models.
+if (process.env.MODELS_TXT) {
+  await page.route(/\.glb$/, (r) => r.fulfill({ status: 404, body: '' }));
+  await page.route(/\.glb\.txt$/, async (r) => { const n = r.request().url().split('/').pop(); try { r.fulfill({ body: await readFile(join(process.env.MODELS_TXT, n)), contentType: 'text/plain' }); } catch { r.fulfill({ status: 404, body: '' }); } });
+}
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); if (m.text().startsWith('DBG')) console.log(m.text()); });
 page.on('pageerror', (e) => errors.push(e.message));

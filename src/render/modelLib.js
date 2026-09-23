@@ -106,13 +106,35 @@ export function allModelNames() {
 const cache = new Map(); // name -> { scene, animations, info }
 let loader = null;
 
+// Hosts that cannot serve .glb get the same files as base64 text (.glb.txt).
+let format = null; // 'glb' | 'txt'
+
+async function fetchModel(name, base) {
+  const tryGlb = async () => {
+    const r = await fetch(`${base}${name}.glb`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.arrayBuffer();
+  };
+  const tryTxt = async () => {
+    const r = await fetch(`${base}${name}.glb.txt`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const bin = atob((await r.text()).trim());
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  };
+  if (format === 'glb') return tryGlb();
+  if (format === 'txt') return tryTxt();
+  try { const b = await tryGlb(); format = 'glb'; return b; } catch { const b = await tryTxt(); format = 'txt'; return b; }
+}
+
 export async function preloadModels(names = allModelNames(), onProgress = () => {}, base = 'assets/models/') {
   loader = loader || new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   let done = 0;
-  await Promise.all(names.map(async (name) => {
+  const loadOne = async (name) => {
     if (cache.has(name)) { onProgress(++done / names.length); return; }
     try {
-      const g = await loader.loadAsync(`${base}${name}.glb`);
+      const g = await loader.parseAsync(await fetchModel(name, base), '');
       g.scene.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(g.scene, true);
       cache.set(name, { scene: g.scene, animations: g.animations || [], box, parts: null });
@@ -120,7 +142,10 @@ export async function preloadModels(names = allModelNames(), onProgress = () => 
       log.warn('model', `could not load ${name}: ${e.message}`);
     }
     onProgress(++done / names.length);
-  }));
+  };
+  // The first file decides which format this host serves.
+  if (names.length) await loadOne(names[0]);
+  await Promise.all(names.slice(1).map(loadOne));
 }
 
 export function hasModel(name) { return cache.has(name); }
