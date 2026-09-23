@@ -384,6 +384,7 @@ export class Game {
   // Called from inside the Lightbreak tunnel: swap the whole system.
   arriveInSystem(systemId, via) {
     const fromPos = systemPosition(this.state.location.systemId);
+    const first = !this.state.isDiscovered('systems', systemId);
     this.state.stats.jumps++;
     this.ship.root.removeFromParent();
     this.player.object.removeFromParent();
@@ -410,7 +411,7 @@ export class Game {
     this.player.placeInShip(this.ship, new THREE.Vector3(0, 0, -8.9), new THREE.Vector3(0, 0, -1));
     this.ship.model.interior.add(this.player.object);
     this.updateCameraParent();
-    const first = this.state.discover('systems', systemId, { name: sys.name, star: sys.star.type });
+    this.state.discover('systems', systemId, { name: sys.name, star: sys.star.type });
     this.pendingArrival = { first, sys, target, fromPos, via };
     this.save();
   }
