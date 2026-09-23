@@ -23,6 +23,7 @@ await page.goto(`http://localhost:${srv.address().port}/?dev=1`);
 await page.waitForFunction(() => window.__game && document.querySelector('.title-screen'));
 await page.evaluate(() => { window.__game.menus.closeAll(); window.__game.newGame({ name: 'Test' }); window.__game.hud.bannerQueue.length = 0; });
 await page.waitForTimeout(1500);
+await page.addScriptTag({ path: resolve('tests/e2e/scenes.js') });
 const scenes = process.argv.slice(2);
 for (let i = 0; i < scenes.length; i += 3) {
   const code = scenes[i], name = scenes[i + 1], wait = Number(scenes[i + 2] || 2000);

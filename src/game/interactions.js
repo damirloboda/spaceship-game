@@ -1,6 +1,5 @@
 // Context-sensitive "E" interactions for the current mode.
 import * as THREE from 'three';
-import { RAMP_EXIT } from '../render/shipModel.js';
 
 const tv = new THREE.Vector3();
 
@@ -15,15 +14,25 @@ export function findInteraction(game) {
   }
 }
 
+// Distance from a body-local point to the ship's hull box (metres).
+export function distanceToShip(game, localPos) {
+  const ship = game.ship;
+  if (!ship.body) return Infinity;
+  const l = ship.root.worldToLocal(ship.body.spin.localToWorld(tv.copy(localPos)));
+  const dx = Math.max(0, Math.abs(l.x) - 5);
+  const dy = Math.max(0, Math.abs(l.y - 0.5) - 3.5);
+  const dz = Math.max(0, l.z - 16, -19.5 - l.z);
+  return Math.hypot(dx, dy, dz);
+}
+
 function onFoot(game) {
   const p = game.player;
   const body = p.body;
   if (!body) return null;
   const ship = game.ship;
-  // Ship ramp
-  if (ship.landed && ship.body === body) {
-    const ramp = body.spin.worldToLocal(ship.root.localToWorld(tv.copy(RAMP_EXIT)));
-    if (ramp.distanceTo(p.pos) < 4.5) return { key: 'prompt.enter_ship', action: () => game.enterShipFromOutside() };
+  // Ship: board from anywhere close to the hull, not just the ramp.
+  if (ship.landed && ship.body === body && distanceToShip(game, p.pos) < 7) {
+    return { key: 'prompt.enter_ship', action: () => game.enterShipFromOutside() };
   }
   // Skimmer
   const sk = game.skimmer;

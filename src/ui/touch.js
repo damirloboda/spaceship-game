@@ -40,7 +40,7 @@ export class TouchControls {
       this.game.audio.unlock();
       for (const tch of e.changedTouches) {
         if (tch.target.closest('button')) continue;
-        if (tch.clientX < window.innerWidth * 0.42 && this.moveId === null) {
+        if (tch.clientX < window.innerWidth * 0.45 && this.moveId === null) {
           this.moveId = tch.identifier;
           this.origin = { x: tch.clientX, y: tch.clientY };
           this.stick.style.left = `${tch.clientX}px`;
@@ -94,7 +94,7 @@ export class TouchControls {
     const layout = LAYOUTS[mode] || [];
     this.buttons.replaceChildren(...layout.map(([action, key]) => {
       const b = h('button', { class: `tb tb-${action}` }, t(key));
-      const down = (e) => { e.preventDefault(); e.stopPropagation(); inp.touch.held.add(action); inp.touch.edges.add(action); b.classList.add('on'); this.game.audio.unlock(); };
+      const down = (e) => { e.preventDefault(); e.stopPropagation(); inp.touch.held.add(action); inp.touch.edges.add(action); b.classList.add('on'); this.game.audio.unlock(); this.buzz(8); };
       const up = (e) => { e.preventDefault(); inp.touch.held.delete(action); b.classList.remove('on'); };
       b.addEventListener('touchstart', down, { passive: false });
       b.addEventListener('touchend', up);
@@ -103,6 +103,23 @@ export class TouchControls {
       b.addEventListener('mouseup', up);
       return b;
     }));
+  }
+
+  // Called every frame: the USE button pulses and shows what it will do.
+  setInteraction(it) {
+    const b = this.buttons.querySelector('.tb-interact');
+    if (!b) return;
+    const label = it ? t(it.key, it.params) : '';
+    if (b.dataset.label === label) return;
+    b.dataset.label = label;
+    b.classList.toggle('ready', !!it);
+    b.replaceChildren(h('span', {}, t('touch.use')), label ? h('small', {}, label) : '');
+  }
+
+  // Short vibration on phones that support it.
+  buzz(ms = 12) {
+    if (!this.game.settings.touchControls || this.game.settings.reducedMotion) return;
+    try { navigator.vibrate?.(ms); } catch { /* not supported */ }
   }
 
   relabel() {

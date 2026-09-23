@@ -57,8 +57,16 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   budget — fly from the ground to orbit with no loading screen. Biomes,
   oceans (swimming and diving), atmospheric scattering, clouds, rings visible
   from the surface, real day/night rotation.
-- **Life**: 10 procedural creature species per world with a food chain
-  (herbivores flee, predators hunt, populations shift) and 20 plant species.
+- **Life**: 10 creature species per world with a food chain (herbivores flee,
+  predators hunt, populations shift), shown as animated hand-made models —
+  farm animals and wolves on Earth-like worlds, penguins and yetis on ice,
+  cute monsters on alien worlds — with idle/walk/run/attack/death animations.
+  Oceans have schools of fish, rays, dolphins, sharks and whales. 20 plant
+  species per world use instanced tree, bush, grass and cactus models (snowy,
+  dead or alien variants per planet type), plus decorative boulders.
+- **Characters**: pick an animated astronaut (Fernando, Finn or Barbara);
+  citizens are animated astronauts and service mechs. The multitool mines
+  deposits and doubles as a defence beam against hostile creatures.
 - **Civilization**: the Veyari Concord city with markets, lab, hospital,
   hotel, workshops and a spaceport; citizens with names, jobs, homes,
   personalities and daily schedules. Ten civilizations defined for later
@@ -70,9 +78,14 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   docking at the orbital station.
 - **Graphics**: photo-scanned CC0 textures (Poly Haven) blended triplanar over
   procedural biomes with normal mapping, image-based lighting (reflections of
-  the sky or the galaxy), animated ocean waves with foam, a faceted fighter
-  hull with PBR metal panels and a glass canopy, engine plumes, lens flare,
-  bloom.
+  the sky or the galaxy), animated ocean waves with foam, a hand-made fighter
+  hull with four engine plumes, lens flare, bloom. Skinned models are animated
+  with mesh-relative bone matrices so they stay precise millions of metres
+  from the world origin.
+- **Phones**: third person by default, the move stick sprints at full tilt,
+  the USE button pulses and names what it will do (tap the prompt too), aim
+  assist for ship lasers and the multitool, haptic feedback. Board the ship
+  from anywhere within a few metres of the hull.
 - **Asteroid fields** inside planetary rings and star-system belts: streamed
   around the ship, spinning, collidable; shoot them with the twin wing
   lasers and they explode into physically simulated debris and ore.
@@ -104,4 +117,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Credits
 
-Textures in `assets/textures` are derived from [Poly Haven](https://polyhaven.com) assets (CC0). Everything else — models, sounds, shaders — is generated in code.
+Textures in `assets/textures` are derived from [Poly Haven](https://polyhaven.com) assets (CC0).
+Models in `assets/models` (ship, astronauts, trees, animals, monsters, fish) are by
+[Quaternius](https://quaternius.com) (CC0) — see `assets/models/LICENSE.md`. If a model
+fails to load the game falls back to its procedural geometry. Sounds and shaders are
+generated in code.

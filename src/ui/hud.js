@@ -27,7 +27,15 @@ export class Hud {
     E.ship = h('div', { class: 'shiphud' });
     E.warnings = h('div', { class: 'warnings' });
     E.crosshair = h('div', { class: 'crosshair' });
-    E.prompt = h('div', { class: 'prompt' });
+    // Tapping the prompt performs it (handy on touch screens).
+    E.prompt = h('div', { class: 'prompt', onpointerdown: (e) => {
+      const it = this.game.interaction;
+      if (!it || !E.prompt.classList.contains('on')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      it.action();
+      this.game.audio.play('ui');
+    } });
     E.progress = h('div', { class: 'progress' }, h('i'));
     E.banner = h('div', { class: 'banner' });
     E.toasts = h('div', { class: 'toasts' });

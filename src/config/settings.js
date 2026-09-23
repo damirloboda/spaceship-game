@@ -53,7 +53,7 @@ export function defaultSettings() {
     reducedMotion: false,
     highContrastUI: false,
     uiScale: 1.0,
-    thirdPerson: false,
+    thirdPerson: mobile,
     autoRefuelJetpack: true,
     showFps: false,
     colorblind: 'none',

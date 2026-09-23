@@ -6,11 +6,15 @@ import * as THREE from 'three';
 import { colorize, merge } from './models.js';
 import { createFieldMaterial, createExhaustMaterial } from './shaders.js';
 import { texture } from './textures.js';
+import { staticInstance, SHIP_MODEL } from './modelLib.js';
 
 export const INTERIOR = { minX: -3.2, maxX: 3.2, minZ: -10.8, maxZ: 10.8, height: 2.8 };
 export const GEAR_HEIGHT = 2.6; // distance from deck (y=0) to the ground when landed
-export const RAMP_EXIT = new THREE.Vector3(0, -GEAR_HEIGHT, 14.0); // where the player steps off
+export const RAMP_EXIT = new THREE.Vector3(-5.5, -GEAR_HEIGHT, -7.5); // where the player steps off (port side, by the cockpit)
+export const EXIT_FACING = new THREE.Vector3(-1, 0, 0);
 export const RAMP_OPEN = 0.42;
+// Placement of the hand-made hull model in ship space.
+export const SHIP_SHELL = { length: 38, offset: new THREE.Vector3(0, -1.4, -1.5) };
 export const RAMP_CLOSED = 0.0;
 
 
@@ -275,7 +279,23 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   const canopy = new THREE.Mesh(canopyGeo, canopyMat);
   exterior.add(canopy);
   const frameGeo = merge([-14, -10.8, -7.6].map((z) => colorize(new THREE.TorusGeometry(1, 0.05, 4, 8, Math.PI).scale(z < -12 ? 2.95 : 3.8, 2.0, 1).translate(0, 1.4, z), dark)));
-  exterior.add(new THREE.Mesh(frameGeo, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.8, roughness: 0.4 })));
+  const frameMesh = new THREE.Mesh(frameGeo, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.8, roughness: 0.4 }));
+  exterior.add(frameMesh);
+  // Hand-made hull model (falls back to the procedural hull above).
+  const legacyHull = [hullMesh, canopy, frameMesh, ...exterior.children.filter((o) => o.geometry === bellGeo)];
+  const shell = staticInstance(SHIP_MODEL, SHIP_SHELL.length, { byLength: true, yaw: Math.PI });
+  if (shell) {
+    for (const o of legacyHull) o.visible = false;
+    shell.position.copy(SHIP_SHELL.offset);
+    shell.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      o.material.metalness = 0.35;
+      o.material.roughness = 0.45;
+      o.material.envMapIntensity = 1.4;
+    });
+    exterior.add(shell);
+  }
   // Engine glow and exhaust
   const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.6, 1.0).multiplyScalar(0.9), toneMapped: false });
   const flameMat = createExhaustMaterial([0.3, 0.62, 1.0]);
@@ -312,6 +332,26 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   const navG = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 4), new THREE.MeshBasicMaterial({ color: 0x20ff40 }));
   navG.position.set(15.3, 3.4, 9.5);
   exterior.add(navR, navG);
+  if (shell) {
+    // Engines of the hand-made hull sit further back and wider apart.
+    // Two main engines in the tail plus two wing nacelles.
+    const glows = exterior.children.filter((o) => o.material === glowMat);
+    glows.forEach((o, i) => { o.position.set((i % 2 ? 1 : -1) * 3, 1.7, 17.45); o.scale.setScalar(0.95); });
+    flames.forEach((f, i) => { f.position.set((i % 2 ? 1 : -1) * 3, 1.7, 19.4); f.userData.base = 1.15; });
+    for (const side of [-1, 1]) {
+      const g = glows[0].clone();
+      g.position.set(side * 14.5, 2.4, 12.15);
+      g.scale.setScalar(0.7);
+      exterior.add(g);
+      const f = flames[0].clone();
+      f.position.set(side * 14.5, 2.4, 13.6);
+      f.userData = { base: 0.7 };
+      exterior.add(f);
+      flames.push(f);
+    }
+    navR.position.set(-16.6, 0.2, 12); navG.position.set(16.6, 0.2, 12);
+    ramp.visible = false;
+  }
   // Energy field for Overdrive / Lightbreak
   const fieldMat = createFieldMaterial();
   const field = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), fieldMat);
@@ -473,7 +513,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   ];
 
   return {
-    root, exterior, interior, flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
+    root, exterior, interior, shell, flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
     nitro: { panel, doorPivot, canister, open: false, openT: 0 },
     cockpitEye: new THREE.Vector3(0, 1.62, -9.1),
     materials: [hullMat, canopyMat, glowMat, flameMat, gearMat, intMat, stripMat, windowMat, screenMat, coreMat],

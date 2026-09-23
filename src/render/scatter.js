@@ -2,7 +2,8 @@
 // deterministic per chunk (same planet = same forest). Rendered with one
 // InstancedMesh per species, rebuilt only when the set of chunks changes.
 import * as THREE from 'three';
-import { RNG, hashMix } from '../core/rng.js';
+import { RNG, hashMix, hashString } from '../core/rng.js';
+import { floraModelFor, staticParts } from './modelLib.js';
 import { cubeToSphere } from './terrain.js';
 import { plantGeometry, depositGeometry, DEPOSIT_TYPES } from './models.js';
 
@@ -39,7 +40,14 @@ export class Scatter {
     this.dirty = false;
     this.rebuildTimer = 0;
     const wantBiomes = ['grassland', 'forest', 'savanna', 'wetland', 'tundra', 'desert', 'dunes', 'mesa', 'ice', 'snow', 'rock', 'fungal', 'sporefield', 'mire', 'toxicflat', 'crystal', 'glowmoss', 'regolith', 'basalt', 'ash', 'irradiated', 'storm'];
-    this.species = flora.map((sp, i) => {
+    // Decorative boulders (not scannable) so every world has some detail.
+    const rrng = new RNG(hashMix(body.def.seed, 'rocks'));
+    const rocks = [0, 1, 2].map((i) => ({
+      id: `${body.def.id}/rock${i}`, form: 'rock', decor: true, height: rrng.range(0.9, 3.2), leaf: [0.5, 0.5, 0.5], glow: 0,
+      density: rrng.range(0.25, 0.5), collider: 0.7,
+    }));
+    const hasRockModels = rocks.some((r) => floraModelFor(body.def.type, 'rock', new RNG(1)));
+    this.species = [...flora, ...(hasRockModels ? rocks : [])].map((sp, i) => {
       const r = new RNG(hashMix(body.def.seed, sp.id));
       // Each species prefers a few biomes; forests are denser.
       const pref = new Set(r.shuffle(wantBiomes.slice()).slice(0, 7));
@@ -48,24 +56,44 @@ export class Scatter {
       if (sp.form === 'mushroom') { pref.add('fungal'); pref.add('glowmoss'); }
       if (sp.form === 'crystal') { pref.add('crystal'); pref.add('ice'); }
       if (sp.form === 'reed') { pref.add('wetland'); pref.add('mire'); }
-      const geo = plantGeometry(sp);
-      const mat = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: sp.form === 'crystal' ? 0.25 : 0.85,
-        metalness: sp.form === 'crystal' ? 0.3 : 0,
-        emissive: sp.glow ? new THREE.Color(sp.leaf[0], sp.leaf[1], sp.leaf[2]).multiplyScalar(sp.glow * 0.6) : new THREE.Color(0),
-        flatShading: true,
-      });
-      this.addSway(mat, sp.height);
+      if (sp.form === 'rock') for (const b of ['rock', 'mesa', 'tundra', 'regolith', 'basalt', 'ash', 'beach', 'snow', 'glacier', 'lavafield']) pref.add(b);
       const cap = Math.floor(2600 * density);
-      const mesh = new THREE.InstancedMesh(geo, mat, cap);
-      mesh.count = 0;
-      mesh.frustumCulled = false;
-      mesh.castShadow = sp.height > 3;
-      mesh.receiveShadow = true;
+      const modelName = floraModelFor(body.def.type, sp.form, new RNG(hashString(sp.id)));
+      const parts = modelName ? staticParts(modelName) : null;
+      let meshes;
+      if (parts?.length) {
+        // Hand-made model: one instanced mesh per material, sharing matrices.
+        meshes = parts.map((part) => {
+          const mat = part.material.clone();
+          if (sp.glow) { mat.emissive = new THREE.Color(sp.leaf[0], sp.leaf[1], sp.leaf[2]).multiplyScalar(sp.glow * 0.35); }
+          if (sp.form !== 'rock') this.addSway(mat, 1);
+          return new THREE.InstancedMesh(part.geometry, mat, cap);
+        });
+        for (const m of meshes.slice(1)) m.instanceMatrix = meshes[0].instanceMatrix;
+      } else {
+        const geo = plantGeometry(sp);
+        const mat = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: sp.form === 'crystal' ? 0.25 : 0.85,
+          metalness: sp.form === 'crystal' ? 0.3 : 0,
+          emissive: sp.glow ? new THREE.Color(sp.leaf[0], sp.leaf[1], sp.leaf[2]).multiplyScalar(sp.glow * 0.6) : new THREE.Color(0),
+          flatShading: true,
+        });
+        this.addSway(mat, sp.height);
+        meshes = [new THREE.InstancedMesh(geo, mat, cap)];
+      }
+      for (const mesh of meshes) {
+        mesh.count = 0;
+        mesh.frustumCulled = false;
+        mesh.castShadow = sp.height > 3;
+        mesh.receiveShadow = true;
+        this.group.add(mesh);
+      }
+      const mesh = meshes[0];
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      this.group.add(mesh);
-      return { def: sp, pref, mesh, cap, index: i };
+      // Models are 1 unit tall: instance scale carries the species height.
+      const unitScale = parts?.length ? sp.height : 1;
+      return { def: sp, pref, mesh, meshes, cap, index: i, unitScale, model: parts?.length ? modelName : null };
     });
     const weights = DEPOSIT_WEIGHTS[body.def.type] || DEPOSIT_WEIGHTS.default;
     this.depositWeights = Object.entries(weights).map(([v, w]) => ({ v, w }));
@@ -146,7 +174,8 @@ export class Scatter {
         yaw.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
         q.multiply(yaw);
         const sc = 0.7 + rng.next() * 0.6;
-        scale.set(sc, sc, sc);
+        const us = sc * sp.unitScale;
+        scale.set(us, us * (0.9 + rng.next() * 0.2), us);
         m.compose(pos, q, scale);
         chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc });
       }
@@ -212,7 +241,7 @@ export class Scatter {
       }
     }
     this.species.forEach((sp, i) => {
-      sp.mesh.count = counts[i];
+      for (const m of sp.meshes) m.count = counts[i];
       sp.mesh.instanceMatrix.needsUpdate = true;
     });
     for (const [t, mesh] of Object.entries(this.depositMeshes)) {
@@ -276,6 +305,7 @@ export class Scatter {
     const r2 = radius * radius;
     for (const chunk of this.chunks.values()) {
       for (const p of chunk.plants) {
+        if (this.species[p.sp].def.decor) continue;
         if (p.pos.distanceToSquared(origin) < r2) out.push({ species: this.species[p.sp].def, pos: p.pos });
       }
     }
@@ -311,7 +341,7 @@ export class Scatter {
   }
 
   dispose() {
-    for (const sp of this.species) { sp.mesh.geometry.dispose(); sp.mesh.material.dispose(); sp.mesh.dispose(); }
+    for (const sp of this.species) for (const m of sp.meshes) { if (!sp.model) m.geometry.dispose(); m.material.dispose(); m.dispose(); }
     for (const mesh of Object.values(this.depositMeshes)) { mesh.geometry.dispose(); mesh.material.dispose(); mesh.dispose(); }
   }
 }

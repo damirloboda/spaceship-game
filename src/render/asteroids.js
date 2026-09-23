@@ -224,6 +224,25 @@ export class AsteroidFields {
     return rock.field.frame.localToWorld(rock.pos.clone());
   }
 
+  // Rock closest to the aim line within a cone (aim assist). Returns the
+  // rock's world centre or null.
+  aimAssist(eye, dir, maxAngle = 0.06, maxDist = 3500) {
+    let best = null, bestA = maxAngle;
+    const v = new THREE.Vector3();
+    for (const f of this.fields) {
+      if (!f.near) continue;
+      for (const r of f.rocks) {
+        if (r.hp <= 0) continue;
+        v.copy(r.pos).applyMatrix4(f.frame.matrixWorld).sub(eye);
+        const d = v.length();
+        if (d > maxDist || d < 1) continue;
+        const a = Math.acos(Math.min(1, v.dot(dir) / d)) - Math.atan(r.radius / d);
+        if (a < bestA) { bestA = a; best = v.clone().add(eye); }
+      }
+    }
+    return best;
+  }
+
   nearestRock(worldPos) {
     let best = null, bd = Infinity;
     for (const f of this.fields) {

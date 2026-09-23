@@ -2,8 +2,9 @@
 // predators hunt herbivores, apex giants roam. Populations shift when
 // predators eat, and spawn rates follow those populations.
 import * as THREE from 'three';
-import { RNG } from '../core/rng.js';
+import { RNG, hashString } from '../core/rng.js';
 import { creatureModel } from './models.js';
+import { creatureModelFor, animatedInstance } from './modelLib.js';
 
 const tmpUp = new THREE.Vector3();
 const tmpF = new THREE.Vector3();
@@ -38,6 +39,29 @@ export class Fauna {
     this.events = [];
   }
 
+  // Hand-made animated model for a species (stable per species), or null.
+  modelName(sp) {
+    if (!this.modelNames) this.modelNames = new Map();
+    if (!this.modelNames.has(sp.id)) this.modelNames.set(sp.id, creatureModelFor(this.body.def.type, sp, new RNG(hashString(sp.id))));
+    return this.modelNames.get(sp.id);
+  }
+
+  makeCreatureObject(sp) {
+    const name = this.modelName(sp);
+    const inst = name ? animatedInstance(name, Math.max(0.9, sp.size * 1.25), { byLength: true }) : null;
+    if (inst) {
+      const obj = inst.root;
+      obj.legs = [];
+      obj.wings = [];
+      return { obj, anim: inst };
+    }
+    const obj = this.template(sp).clone();
+    obj.legs = obj.userData.legIdx.map((i) => obj.children[i]);
+    obj.wings = obj.userData.wingIdx.map((i) => obj.children[i]);
+    obj.legs.forEach((leg, i) => { leg.userData.phase = (i % 4 < 2 ? 0 : Math.PI) + (i % 2 ? Math.PI : 0); });
+    return { obj, anim: null };
+  }
+
   template(sp) {
     if (!this.templates.has(sp.id)) this.templates.set(sp.id, creatureModel(sp, sp.glow ? this.glowMaterial : this.material));
     return this.templates.get(sp.id);
@@ -61,10 +85,7 @@ export class Fauna {
       const dir = up.clone().addScaledVector(t1, (Math.cos(a) * d) / this.surface.radius).addScaledVector(t2, (Math.sin(a) * d) / this.surface.radius).normalize();
       const g = this.groundAt(dir);
       if (this.surface.hasOcean && g.h < 0.5) continue;
-      const obj = this.template(sp).clone();
-      obj.legs = obj.userData.legIdx.map((i) => obj.children[i]);
-      obj.wings = obj.userData.wingIdx.map((i) => obj.children[i]);
-      obj.legs.forEach((leg, i) => { leg.userData.phase = (i % 4 < 2 ? 0 : Math.PI) + (i % 2 ? Math.PI : 0); });
+      const { obj, anim } = this.makeCreatureObject(sp);
       const hover = sp.flying ? rng.range(6, 18) : 0;
       const pos = dir.clone().multiplyScalar(g.r + hover);
       obj.position.copy(pos);
@@ -72,7 +93,7 @@ export class Fauna {
       orientOnSurface(obj, up, heading);
       this.group.add(obj);
       this.creatures.push({
-        sp, obj, pos, heading, hover, state: 'wander', timer: rng.range(1, 4), target: null, speed: 0, phase: rng.range(0, 10), attackCd: 0, alive: true, scanned: false,
+        sp, obj, anim, pos, heading, hover, hp: 25 + sp.size * 20, dying: 0, provoked: false, state: 'wander', timer: rng.range(1, 4), target: null, speed: 0, phase: rng.range(0, 10), attackCd: 0, alive: true, scanned: false,
       });
     }
   }
@@ -113,6 +134,14 @@ export class Fauna {
       if (!c.alive) continue;
       const dp = playerLocal ? c.pos.distanceTo(playerLocal) : Infinity;
       if (dp > 420) { c.alive = false; continue; }
+      if (c.dying > 0) {
+        // Death animation, then the body fades out of the world.
+        c.dying -= dt;
+        if (c.anim) c.anim.update(dt);
+        else c.obj.scale.setScalar(Math.max(0.01, c.dying / 2.5));
+        if (c.dying <= 0) c.alive = false;
+        continue;
+      }
       this.think(c, dt, playerLocal, dp, ctx);
       // Move along the tangent plane then snap to the ground.
       const up = tmpUp.copy(c.pos).normalize();
@@ -132,6 +161,17 @@ export class Fauna {
       c.obj.position.copy(c.pos);
       orientOnSurface(c.obj, up, c.heading);
       // Animation
+      if (c.anim) {
+        c.attackAnim = Math.max(0, (c.attackAnim || 0) - dt);
+        const run = c.speed > c.sp.speed * 0.6;
+        const state = c.attackAnim > 0 ? 'attack' : c.speed > 0.15 ? (run ? 'run' : 'walk') : 'idle';
+        const rate = state === 'walk' ? THREE.MathUtils.clamp(c.speed / Math.max(0.5, c.sp.speed * 0.35), 0.6, 1.6) : 1;
+        c.anim.play(state, 0.3, rate);
+        // Far creatures animate at a lower rate.
+        c.animAcc = (c.animAcc || 0) + dt;
+        if (dp < 120 || c.animAcc > 0.1) { c.anim.update(c.animAcc); c.animAcc = 0; }
+        continue;
+      }
       const k = Math.min(1, c.speed / Math.max(1, c.sp.speed * 0.5));
       for (const leg of c.obj.legs) leg.rotation.x = Math.sin(t * (4 + c.speed * 1.2) + leg.userData.phase) * 0.6 * k;
       for (const w of c.obj.wings) w.rotation.z = Math.sin(t * 9 + c.phase) * 0.6 * w.scale.x;
@@ -140,6 +180,7 @@ export class Fauna {
     for (let i = this.creatures.length - 1; i >= 0; i--) {
       if (!this.creatures[i].alive) {
         this.group.remove(this.creatures[i].obj);
+        this.creatures[i].anim?.dispose();
         this.creatures.splice(i, 1);
       }
     }
@@ -165,7 +206,7 @@ export class Fauna {
     }
     if (sp.tier >= 3) {
       const prey = this.nearest(c, (o) => o.sp.tier < sp.tier && o.sp.size < sp.size * 1.6, 45);
-      const hostile = ctx.hostile && (sp.temperament === 'aggressive' || (sp.temperament === 'territorial' && dp < 12));
+      const hostile = c.provoked || (ctx.hostile && (sp.temperament === 'aggressive' || (sp.temperament === 'territorial' && dp < 12)));
       if (hostile && dp < 30 && playerLocal) {
         c.heading.subVectors(playerLocal, c.pos).normalize();
         c.speed = sp.speed * 0.8;
@@ -173,6 +214,7 @@ export class Fauna {
         if (dp < 2 + sp.size * 0.6 && c.attackCd <= 0) {
           c.attackCd = 1.6;
           this.events.push({ type: 'attack', damage: 4 + sp.size * 2, species: sp });
+          c.attackAnim = 0.8;
           c.heading.negate();
         }
         return;
@@ -182,6 +224,7 @@ export class Fauna {
         c.speed = sp.speed;
         c.state = 'hunt';
         if (c.pos.distanceTo(prey.pos) < 1.5 + (sp.size + prey.sp.size) * 0.4) {
+          c.attackAnim = 0.8;
           prey.alive = false;
           this.ecosystem[prey.sp.id] = Math.max(0.2, (this.ecosystem[prey.sp.id] ?? 1) - 0.04);
           this.ecosystem[sp.id] = Math.min(1.5, (this.ecosystem[sp.id] ?? 1) + 0.02);
@@ -210,11 +253,46 @@ export class Fauna {
   nearest(c, filter, radius) {
     let best = null, bd = radius;
     for (const o of this.creatures) {
-      if (o === c || !o.alive || !filter(o)) continue;
+      if (o === c || !o.alive || o.dying > 0 || !filter(o)) continue;
       const d = o.pos.distanceTo(c.pos);
       if (d < bd) { bd = d; best = o; }
     }
     return best;
+  }
+
+  // Living creature closest to an aim ray (body-local eye + unit direction).
+  inAim(eye, dir, range = 45, cone = 0.1) {
+    let best = null, bestA = Infinity;
+    const v = new THREE.Vector3();
+    for (const c of this.creatures) {
+      if (!c.alive || c.dying > 0) continue;
+      v.copy(c.pos).addScaledVector(tmpUp.copy(c.pos).normalize(), c.sp.size * 0.45).sub(eye);
+      const d = v.length();
+      if (d > range || d < 0.3) continue;
+      const a = Math.acos(Math.min(1, v.dot(dir) / d)) - Math.atan((c.sp.size * 0.6) / d);
+      if (a < cone && a < bestA) { bestA = a; best = c; }
+    }
+    return best;
+  }
+
+  // Hurt a creature: prey flees, predators turn on the attacker.
+  damage(c, amount, fromPos) {
+    if (!c.alive || c.dying > 0) return false;
+    c.hp -= amount;
+    if (c.sp.tier >= 3) c.provoked = true;
+    else if (fromPos) {
+      c.heading.subVectors(c.pos, fromPos).normalize();
+      c.speed = c.sp.speed;
+      c.state = 'flee';
+      c.timer = 4;
+    }
+    if (c.hp > 0) return false;
+    c.dying = 2.5;
+    c.speed = 0;
+    c.anim?.play('death', 0.15);
+    this.ecosystem[c.sp.id] = Math.max(0.2, (this.ecosystem[c.sp.id] ?? 1) - 0.05);
+    this.events.push({ type: 'killed', species: c.sp, pos: c.pos.clone() });
+    return true;
   }
 
   near(pos, radius) {
@@ -228,7 +306,7 @@ export class Fauna {
   }
 
   clear() {
-    for (const c of this.creatures) this.group.remove(c.obj);
+    for (const c of this.creatures) { this.group.remove(c.obj); c.anim?.dispose(); }
     this.creatures = [];
   }
 

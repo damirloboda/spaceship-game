@@ -3,6 +3,7 @@
 // first-person arms and legs, optional third-person body.
 import * as THREE from 'three';
 import { humanoidModel, animateHumanoid, colorize, merge } from '../render/models.js';
+import { animatedInstance, CHARACTER_MODELS } from '../render/modelLib.js';
 import { orientOnSurface } from '../render/fauna.js';
 import { INTERIOR } from '../render/shipModel.js';
 
@@ -49,7 +50,10 @@ export class Player {
     const suit = new THREE.Color(p.suit);
     const visor = new THREE.Color(p.visor);
     this.modelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.15, envMapIntensity: 1.2 });
-    this.model = humanoidModel([[suit.r, suit.g, suit.b], [visor.r * 0.6, visor.g * 0.6, visor.b * 0.6]], 1.8, this.modelMat, { suit: true, accent: [visor.r, visor.g, visor.b] });
+    const charName = CHARACTER_MODELS[p.character | 0] || CHARACTER_MODELS[0];
+    // Animated astronaut; the procedural humanoid is the fallback.
+    this.anim = animatedInstance(charName, 1.8, { yaw: Math.PI, prefer: { idle: /^idle_gun$/i, walk: /^walk_gun$/i, run: /^run_gun$/i } });
+    this.model = this.anim ? this.anim.root : humanoidModel([[suit.r, suit.g, suit.b], [visor.r * 0.6, visor.g * 0.6, visor.b * 0.6]], 1.8, this.modelMat, { suit: true, accent: [visor.r, visor.g, visor.b] });
     this.object.add(this.model);
     // Jetpack on the back
     const jp = [];
@@ -73,30 +77,59 @@ export class Player {
       this.object.add(f);
       this.flames.push(f);
     }
-    // First-person arms + multitool
+    // First-person view: right forearm in a segmented suit sleeve holding
+    // the multitool blaster, which glows in the visor colour.
     this.fpArms = new THREE.Group();
-    // Forearms enter from the lower corners of the view, holding the multitool.
-    const armGeo = colorize(new THREE.CapsuleGeometry(0.032, 0.3, 2, 8).rotateX(Math.PI / 2), [suit.r * 0.9, suit.g * 0.9, suit.b * 0.9]);
-    const gloveGeo = colorize(new THREE.SphereGeometry(0.038, 8, 6), [0.22, 0.22, 0.25]);
-    for (const side of [-1, 1]) {
-      const arm = new THREE.Mesh(armGeo, this.modelMat);
-      arm.position.set(side * 0.2, -0.24, -0.34);
-      arm.rotation.set(0.35, side * 0.35, 0);
-      const glove = new THREE.Mesh(gloveGeo, this.modelMat);
-      glove.position.set(side * 0.14, -0.19, -0.5);
-      this.fpArms.add(arm, glove);
+    const sleeveC = [suit.r * 0.85, suit.g * 0.85, suit.b * 0.85];
+    const dark = [0.16, 0.17, 0.2], metal = [0.42, 0.44, 0.48], accent = [visor.r, visor.g, visor.b];
+    const arm = [];
+    // Sleeve axis runs from the lower right corner toward the grip.
+    const aim = new THREE.Vector3(-0.07, 0.11, -0.24).normalize();
+    const C = new THREE.Vector3(0.2, -0.31, -0.26);
+    const along = (geo, t) => {
+      geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), aim));
+      const p = C.clone().addScaledVector(aim, t);
+      return geo.translate(p.x, p.y, p.z);
+    };
+    arm.push(colorize(along(new THREE.CylinderGeometry(0.03, 0.04, 0.3, 12), 0), sleeveC));
+    for (const t of [-0.07, 0.03]) arm.push(colorize(along(new THREE.CylinderGeometry(0.042, 0.042, 0.018, 12), t), dark));
+    arm.push(colorize(along(new THREE.CylinderGeometry(0.034, 0.036, 0.03, 12), 0.14), accent));
+    const glove = new THREE.BoxGeometry(0.055, 0.05, 0.075);
+    glove.translate(0.155, -0.235, -0.41);
+    arm.push(colorize(glove, dark));
+    for (let i = 0; i < 3; i++) {
+      const finger = new THREE.BoxGeometry(0.012, 0.014, 0.04);
+      finger.translate(0.137 + i * 0.013, -0.205, -0.43);
+      arm.push(colorize(finger, dark));
     }
+    this.armMesh = new THREE.Mesh(merge(arm), this.modelMat);
+    this.fpArms.add(this.armMesh);
     const tool = [];
-    const body = new THREE.BoxGeometry(0.05, 0.065, 0.2); body.translate(0.14, -0.17, -0.56);
-    tool.push(colorize(body, [0.3, 0.32, 0.36]));
-    const barrel = new THREE.CylinderGeometry(0.014, 0.018, 0.11, 8); barrel.rotateX(Math.PI / 2); barrel.translate(0.14, -0.155, -0.7);
-    tool.push(colorize(barrel, [0.9, 0.5, 0.15]));
-    const screen = new THREE.BoxGeometry(0.04, 0.022, 0.06); screen.translate(0.14, -0.13, -0.52);
-    tool.push(colorize(screen, [0.2, 0.9, 1.0]));
+    const body = new THREE.BoxGeometry(0.05, 0.06, 0.2); body.translate(0.15, -0.185, -0.5);
+    tool.push(colorize(body, metal));
+    const top = new THREE.BoxGeometry(0.03, 0.02, 0.16); top.translate(0.15, -0.148, -0.51);
+    tool.push(colorize(top, dark));
+    const grip = new THREE.BoxGeometry(0.035, 0.07, 0.04); grip.rotateX(-0.3); grip.translate(0.15, -0.22, -0.43);
+    tool.push(colorize(grip, dark));
+    const barrel = new THREE.CylinderGeometry(0.016, 0.02, 0.12, 12); barrel.rotateX(Math.PI / 2); barrel.translate(0.15, -0.18, -0.65);
+    tool.push(colorize(barrel, dark));
+    const fin = new THREE.BoxGeometry(0.06, 0.008, 0.07);
+    for (const dy of [-0.2, -0.165]) tool.push(colorize(fin.clone().translate(0.15, dy, -0.58), metal));
     this.tool = new THREE.Mesh(merge(tool), this.modelMat);
     this.fpArms.add(this.tool);
+    // Glowing coil, muzzle ring and status screen.
+    this.toolGlowMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: new THREE.Color(visor.r, visor.g, visor.b), emissiveIntensity: 1.6, roughness: 0.3 });
+    const glow = [];
+    const coil = new THREE.CylinderGeometry(0.022, 0.022, 0.08, 12); coil.rotateX(Math.PI / 2); coil.translate(0.15, -0.185, -0.54);
+    glow.push(coil);
+    const ringG = new THREE.TorusGeometry(0.02, 0.004, 6, 16); ringG.translate(0.15, -0.18, -0.71);
+    glow.push(ringG);
+    const screen = new THREE.BoxGeometry(0.026, 0.004, 0.05); screen.translate(0.15, -0.137, -0.46);
+    glow.push(screen);
+    this.toolGlow = new THREE.Mesh(merge(glow), this.toolGlowMat);
+    this.fpArms.add(this.toolGlow);
     this.toolTip = new THREE.Object3D();
-    this.toolTip.position.set(0.14, -0.155, -0.76);
+    this.toolTip.position.set(0.15, -0.18, -0.72);
     this.fpArms.add(this.toolTip);
   }
 
@@ -182,7 +215,8 @@ export class Player {
     const g = body.gravityAt(this.pos);
     const air = body.airDensity(this.pos);
     const mv = input.move();
-    const sprint = input.held('sprint') && this.grounded && mv.y > 0.2;
+    const stickFull = Math.hypot(input.touch.move.x, input.touch.move.y) > 0.95;
+    const sprint = (input.held('sprint') || stickFull) && this.grounded && mv.y > 0.2;
     const maxSpeed = this.swimming ? 3.2 : sprint ? 8.5 : 4.6;
     const wish = new THREE.Vector3().addScaledVector(this.forward, mv.y).addScaledVector(right, mv.x).multiplyScalar(maxSpeed);
     const vr = this.vel.dot(up);
@@ -277,9 +311,11 @@ export class Player {
     const ship = this.game.ship;
     if (ship && ship.body === this.body && ship.landed) {
       const local = ship.model.root.worldToLocal(this.object.parent.localToWorld(this.pos.clone()));
-      if (Math.abs(local.x) < 4.6 && local.z > -19.5 && local.z < 12.8 && local.y < 4.5 && local.y > -3.5) {
+      const hw = ship.model.shell ? 3.4 : 4.6;
+      const zMin = ship.model.shell ? -20.5 : -19.5, zMax = ship.model.shell ? 17.8 : 12.8;
+      if (Math.abs(local.x) < hw && local.z > zMin && local.z < zMax && local.y < 4.5 && local.y > -3.5) {
         // push sideways out of the hull
-        const sx = Math.sign(local.x || 1) * (4.6 - Math.abs(local.x));
+        const sx = Math.sign(local.x || 1) * (hw - Math.abs(local.x));
         const worldPush = new THREE.Vector3(sx, 0, 0).applyQuaternion(ship.model.root.getWorldQuaternion(new THREE.Quaternion()));
         const localPush = worldPush.applyQuaternion(this.body.spin.getWorldQuaternion(new THREE.Quaternion()).invert());
         push.add(localPush);
@@ -354,6 +390,28 @@ export class Player {
       if (this.jetActive) f.scale.set(1, 0.7 + Math.random() * 0.6, 1);
     }
     this.bob += this.speed * dt * (this.grounded ? 1 : 0.2);
+    if (this.anim) {
+      const a = this.anim;
+      let state = 'idle', rate = 1;
+      if (this.swimming) { state = 'swim'; rate = 0.6; }
+      else if (!this.grounded && this.airTime > 0.15) state = 'fall';
+      else if (this.speed > 6) { state = 'run'; rate = this.speed / 8; }
+      else if (this.speed > 0.4) { state = 'walk'; rate = THREE.MathUtils.clamp(this.speed / 3.2, 0.5, 1.6); }
+      a.play(state, 0.2, rate);
+      a.update(dt);
+      this.model.visible = tp;
+      this.jetpackMesh.visible = false;
+      this.fpArms.visible = !tp;
+      const k = this.game.settings.reducedMotion ? 0 : 1;
+      this.fpArms.position.set(Math.sin(this.bob * 1.6) * 0.012 * k, Math.abs(Math.cos(this.bob * 1.6)) * 0.015 * k - this.landImpact * 0.05, 0);
+      this.landImpact = Math.max(0, this.landImpact - dt * 3);
+      // The blaster kicks and its coil flares while the beam is on.
+      const firing = !!this.game.effects?.beam?.visible;
+      this.toolGlowMat.emissiveIntensity = firing ? 3 + Math.random() * 1.5 : 1.4 + Math.sin(performance.now() / 400) * 0.2;
+      this.fpArms.rotation.x = firing ? (Math.random() - 0.3) * 0.02 * k : 0;
+      if (firing) this.fpArms.position.z += 0.008 * k;
+      return;
+    }
     animateHumanoid(this.model, this.bob * 1.6, this.grounded ? this.speed : 0);
     if (!this.grounded && !this.swimming) {
       const l = this.model.limbs;

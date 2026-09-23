@@ -2,10 +2,11 @@
 // workshops, spaceport. Citizens follow daily schedules (sleep, work,
 // market, home) driven by the planet's real day/night cycle.
 import * as THREE from 'three';
-import { RNG } from '../core/rng.js';
+import { RNG, hashString } from '../core/rng.js';
 import { tangentFrame, offsetOnSphere } from '../world/planetGen.js';
 import { generateCitizens, CIVILIZATIONS } from '../world/civGen.js';
 import { colorize, merge, humanoidModel, animateHumanoid } from './models.js';
+import { animatedInstance, CHARACTER_MODELS } from './modelLib.js';
 import { orientOnSurface } from './fauna.js';
 
 const LAYOUT = [
@@ -281,11 +282,20 @@ export class City {
   }
 
   spawnNpc(c) {
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true });
-    const model = humanoidModel([c.color, [0.75, 0.62, 0.55]], c.height, mat);
+    // Citizens are animated astronauts; a few are service robots.
+    const hsh = hashString(c.name + c.home) >>> 0;
+    const robot = hsh % 10 === 0;
+    const name = robot ? (hsh % 20 === 0 ? 'usk_Mech' : 'usk_Mech-D5wW2jDO42') : CHARACTER_MODELS[hsh % CHARACTER_MODELS.length];
+    const anim = animatedInstance(name, robot ? c.height * 1.25 : c.height, { yaw: Math.PI });
+    let model;
+    if (anim) model = anim.root;
+    else {
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true });
+      model = humanoidModel([c.color, [0.75, 0.62, 0.55]], c.height, mat);
+    }
     this.group.add(model);
     const home = this.buildings[c.home];
-    return { c, model, x: home.door.x, z: home.door.z, tx: home.door.x, tz: home.door.z, state: 'sleep', speed: 0, wander: 0, t: Math.random() * 10, talkTimer: 0, heading: 0 };
+    return { c, model, anim, x: home.door.x, z: home.door.z, tx: home.door.x, tz: home.door.z, state: 'sleep', speed: 0, wander: 0, t: Math.random() * 10, talkTimer: 0, heading: 0 };
   }
 
   // hour: local solar time 0..24
@@ -363,7 +373,12 @@ export class City {
       const f = offsetOnSphere(this.dir, this.frame, n.x + Math.sin(n.heading), n.z + Math.cos(n.heading), this.R);
       fwd.set(f[0], f[1], f[2]).multiplyScalar(this.groundR).sub(tmp).normalize();
       orientOnSurface(n.model, up, fwd);
-      animateHumanoid(n.model, n.t, n.speed);
+      if (n.anim) {
+        const near = !playerLocal || tmp.distanceToSquared(playerLocal) < 250 * 250;
+        n.anim.play(n.talkTimer > 0 ? 'wave' : n.speed > 0.1 ? 'walk' : 'idle', 0.3, n.speed > 0.1 ? n.speed / 1.6 : 1);
+        n.animAcc = (n.animAcc || 0) + dt;
+        if (near || n.animAcc > 0.2) { n.anim.update(n.animAcc); n.animAcc = 0; }
+      } else animateHumanoid(n.model, n.t, n.speed);
     }
   }
 

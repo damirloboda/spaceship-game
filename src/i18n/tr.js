@@ -10,6 +10,7 @@ export default {
   'creator.title': 'Karakter oluşturma',
   'creator.name': 'İsim',
   'creator.default_name': 'Nova',
+  'creator.character': 'Karakter',
   'creator.suit': 'Giysi rengi',
   'creator.visor': 'Vizör rengi',
   'creator.build': 'Vücut',

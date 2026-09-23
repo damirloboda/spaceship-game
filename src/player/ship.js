@@ -494,7 +494,8 @@ export class Ship {
     m.ramp.rotation.x += (rampTarget - m.ramp.rotation.x) * Math.min(1, dt * 2);
     const thrust = this.landed || this.docked ? 0.05 : 0.25 + this.throttle * 0.75 + (this.overdrive ? 1.2 : 0) + (this.lb.phase !== 'none' ? 2 : 0);
     for (const f of m.flames) {
-      f.scale.set(1, 1, Math.max(0.2, thrust) * (0.95 + Math.random() * 0.1));
+      const b = f.userData.base || 1;
+      f.scale.set(b, b, Math.max(0.2, thrust) * b * (0.95 + Math.random() * 0.1));
       f.visible = thrust > 0.06;
       f.material.uniforms.uTime.value += dt;
       f.material.uniforms.uPower.value = Math.min(1.6, 0.35 + thrust * 0.6);

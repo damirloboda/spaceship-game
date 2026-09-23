@@ -2,6 +2,7 @@
 import { Game } from './game/game.js';
 import { log } from './core/log.js';
 import { t } from './i18n/index.js';
+import { preloadModels } from './render/modelLib.js';
 
 const boot = document.getElementById('boot');
 const bootMsg = boot?.querySelector('.boot-msg');
@@ -29,7 +30,14 @@ async function main() {
     fatal('WebGL is not available on this device/browser.');
     return;
   }
-  if (bootBar) bootBar.style.width = '40%';
+  if (bootBar) bootBar.style.width = '5%';
+  if (bootMsg) bootMsg.textContent = 'Loading models…';
+  // Models are optional: after a timeout the game falls back to procedural ones.
+  await Promise.race([
+    preloadModels(undefined, (p) => { if (bootBar) bootBar.style.width = `${5 + p * 70}%`; }),
+    new Promise((r) => setTimeout(r, 30000)),
+  ]);
+  if (bootMsg) bootMsg.textContent = 'Generating galaxy…';
   await new Promise((r) => setTimeout(r, 30));
   const game = new Game({ canvas: document.getElementById('game'), ui: document.getElementById('ui') });
   window.__game = game; // handy for debugging and automated tests

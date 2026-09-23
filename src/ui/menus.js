@@ -120,10 +120,13 @@ export class Menus {
     d.suit = d.suit || SUIT_COLORS[0];
     d.visor = d.visor || VISOR_COLORS[0];
     d.build = d.build || 'standard';
+    d.character = d.character | 0;
     const swatches = (list, key) => h('div', { class: 'swatches' }, list.map((c) => h('button', { class: `sw ${d[key] === c ? 'on' : ''}`, style: { background: c }, onclick: () => { d[key] = c; this.refresh(); }, 'aria-label': c })));
     const input = h('input', { type: 'text', value: d.name, maxlength: 20, oninput: (e) => { d.name = e.target.value; } });
     return this.panel('creator.title', [
       h('label', {}, t('creator.name'), input),
+      h('label', {}, t('creator.character')),
+      h('div', { class: 'seg' }, ['🦩 Fernando', '🐸 Finn', '🐝 Barbara'].map((label, i) => h('button', { class: d.character === i ? 'on' : '', onclick: () => { d.character = i; this.refresh(); } }, label))),
       h('label', {}, t('creator.suit')), swatches(SUIT_COLORS, 'suit'),
       h('label', {}, t('creator.visor')), swatches(VISOR_COLORS, 'visor'),
       h('label', {}, t('creator.build')),
@@ -133,7 +136,7 @@ export class Menus {
       this.btn('creator.begin', () => {
         const name = (d.name || '').trim() || t('creator.default_name');
         this.closeAll();
-        g.newGame({ name, suit: d.suit, visor: d.visor, build: d.build });
+        g.newGame({ name, suit: d.suit, visor: d.visor, build: d.build, character: d.character });
       }, { cls: 'primary' }),
     ]);
   }

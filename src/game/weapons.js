@@ -68,7 +68,9 @@ export class Weapons {
     const eye = ship.root.localToWorld(new THREE.Vector3(0, 1.0, -20));
     const far = ship.root.localToWorld(new THREE.Vector3(0, 1.0, -3500));
     const target = g.asteroids.raycast(eye, far);
-    const aim = target ? target.point : ship.root.localToWorld(new THREE.Vector3(0, 1.0, -1200));
+    // Aim assist: generous on touch screens, subtle with a mouse.
+    const assist = target ? null : g.asteroids.aimAssist(eye, dir, g.settings.touchControls ? 0.07 : 0.02);
+    const aim = target ? target.point : assist || ship.root.localToWorld(new THREE.Vector3(0, 1.0, -1200));
     dir.copy(aim).sub(from).normalize();
     const shipVelW = ship.vel.clone().applyQuaternion(ship.root.parent.getWorldQuaternion(new THREE.Quaternion()));
     const mesh = this.pool.find((m) => !m.visible);
@@ -82,6 +84,7 @@ export class Weapons {
     this.flash(from, 6, 0.08, 0xff8a60);
     ship.shake = Math.max(ship.shake, 0.12);
     g.audio.play('laser');
+    g.touch?.buzz(6);
   }
 
   updateBolts(dt) {
@@ -128,6 +131,7 @@ export class Weapons {
     const g = this.game;
     const center = g.asteroids.worldPosOf(r);
     g.asteroids.destroy(r);
+    g.touch?.buzz(35);
     this.flash(center, r.radius * 3.2, 0.6, 0xffc080);
     this.flash(center, r.radius * 1.6, 1.2, 0xff6a30);
     const n = Math.min(24, 8 + Math.floor(r.radius / 6));

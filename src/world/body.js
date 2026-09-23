@@ -7,6 +7,7 @@ import { generateFauna, generateFlora } from './lifeGen.js';
 import { Terrain } from '../render/terrain.js';
 import { Scatter } from '../render/scatter.js';
 import { Fauna } from '../render/fauna.js';
+import { SeaLife } from '../render/sealife.js';
 import { City, CITY_RADIUS } from '../render/city.js';
 import { Station } from '../render/station.js';
 import { createAtmosphereMaterial, createCloudMaterial, createRingMaterial, createWaterMaterial } from '../render/shaders.js';
@@ -62,6 +63,7 @@ export class Body {
     this.spin.add(this.terrain.group, this.scatter.group);
     this.fauna = new Fauna(this, this.faunaSpecies, { max: q.creatures, ecosystem: ctx.ecosystem?.(def.id) || {} });
     this.spin.add(this.fauna.group);
+    if (def.ocean) this.sealife = new SeaLife(this);
     if (def.city && this.sites.city) {
       this.city = new City(this, this.sites.city, { name: def.city.name, civIndex: def.civilization ?? 0, seed: def.seed });
       this.spin.add(this.city.group);
@@ -172,7 +174,7 @@ export class Body {
   setFogEnabled(on) {
     if (on === this.currentFog) return;
     this.currentFog = on;
-    const mats = [this.terrainMaterial, this.waterMaterial, ...(this.scatter?.species.map((s) => s.mesh.material) || []), ...Object.values(this.scatter?.depositMeshes || {}).map((m) => m.material), this.fauna?.material, this.fauna?.glowMaterial, ...(this.city?.materials || [])];
+    const mats = [this.terrainMaterial, this.waterMaterial, ...(this.scatter?.species.flatMap((s) => s.meshes.map((m) => m.material)) || []), ...Object.values(this.scatter?.depositMeshes || {}).map((m) => m.material), this.fauna?.material, this.fauna?.glowMaterial, ...(this.city?.materials || [])];
     for (const m of mats) {
       if (!m) continue;
       m.fog = on;
@@ -244,6 +246,7 @@ export class Body {
     this.terrain.dispose();
     this.scatter.dispose();
     this.fauna.dispose();
+    this.sealife?.dispose();
     this.city?.dispose();
     this.station?.dispose();
     this.terrainMaterial.dispose();

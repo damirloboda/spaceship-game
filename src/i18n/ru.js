@@ -10,6 +10,7 @@ export default {
   'creator.title': 'Создание персонажа',
   'creator.name': 'Имя',
   'creator.default_name': 'Нова',
+  'creator.character': 'Персонаж',
   'creator.suit': 'Цвет скафандра',
   'creator.visor': 'Цвет визора',
   'creator.build': 'Телосложение',

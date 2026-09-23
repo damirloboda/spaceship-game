@@ -157,6 +157,25 @@ export class Tools {
     const aimW = p.aimWorld(new THREE.Vector3());
     const aim = aimW.applyQuaternion(body.spin.getWorldQuaternion(new THREE.Quaternion()).invert());
     const dep = body.scatter.findDeposit(eye, aim, 8);
+    // No deposit in reach: the multitool doubles as a defence beam.
+    const foe = dep ? null : body.fauna.inAim(eye, aim, 45, g.settings.touchControls ? 0.16 : 0.08);
+    if (foe) {
+      this.mining = null;
+      g.hud.setProgress(0);
+      const tip = body.spin.worldToLocal(p.toolTip.getWorldPosition(new THREE.Vector3()));
+      const target = foe.pos.clone().addScaledVector(foe.pos.clone().normalize(), foe.sp.size * 0.45);
+      g.effects.showBeam(body.spin, g.cameraMode === 'third' ? eye : tip, target);
+      if (Math.random() < dt * 25) g.effects.burst(body.spin, target, { count: 3, color: 0xff7a50, size: 0.08, speed: 4, life: 0.4 });
+      if (body.fauna.damage(foe, dt * 40, eye)) {
+        g.audio.play('explosion');
+        g.touch?.buzz(30);
+        g.effects.burst(body.spin, target, { count: 18, color: 0xffb070, size: 0.14, speed: 6, life: 0.8, up: target.clone().normalize(), gravity: 5 });
+        const left = this.state.addItem('biosample', 1);
+        if (!left) g.hud.pickup('biosample', 1);
+        this.state.addXP('survival', 4);
+      } else if (Math.random() < dt * 6) g.audio.play('hit');
+      return;
+    }
     if (!dep) {
       this.mining = null;
       g.effects.hideBeam();

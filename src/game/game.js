@@ -23,7 +23,7 @@ import { AudioSystem } from './audio.js';
 import { Effects } from '../render/effects.js';
 import { Weather } from '../render/weather.js';
 import { createGalaxyBackground, createStarfield, createStreaks, createTunnel } from '../render/sky.js';
-import { GEAR_HEIGHT, RAMP_EXIT } from '../render/shipModel.js';
+import { GEAR_HEIGHT, RAMP_EXIT, EXIT_FACING } from '../render/shipModel.js';
 import { Tools } from './tools.js';
 import { Director } from './director.js';
 import { findInteraction } from './interactions.js';
@@ -372,7 +372,7 @@ export class Game {
     }
     const world = ship.root.localToWorld(RAMP_EXIT.clone());
     const local = ship.body.spin.worldToLocal(world);
-    const back = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.root.getWorldQuaternion(new THREE.Quaternion()));
+    const back = EXIT_FACING.clone().applyQuaternion(ship.root.getWorldQuaternion(new THREE.Quaternion()));
     const localBack = back.applyQuaternion(ship.body.spin.getWorldQuaternion(new THREE.Quaternion()).invert());
     this.player.placeOnBody(ship.body, local.addScaledVector(local.clone().normalize(), 1), localBack);
     this.setMode('foot');
@@ -451,6 +451,7 @@ export class Game {
     v.health = Math.max(0, v.health - amount);
     this.hud.hurt(amount);
     this.audio.play('hurt');
+    if (amount >= 2) this.touch.buzz(Math.min(80, 20 + amount * 3));
     if (v.health <= 0) this.onPlayerDown(cause);
   }
 
@@ -555,6 +556,7 @@ export class Game {
     guard('weapons', () => this.weapons.update(dt, input));
     this.tools.update(dt, input);
     this.interaction = guard('interact', () => findInteraction(this)) || null;
+    if (this.settings.touchControls) this.touch.setInteraction(this.interaction);
     if (this.interaction && input.pressed('interact')) {
       this.interaction.action();
       this.audio.play('ui');
@@ -764,6 +766,7 @@ export class Game {
         guard('fauna', () => {
           b.fauna.update(dt, pl, { hostile: b.def.danger !== 'SAFE' });
           for (const ev of b.fauna.events.splice(0)) this.director.onFaunaEvent(b, ev);
+          b.sealife?.update(dt, pl, !!(this.player?.swimming && this.player.body === b && this.player.mode === 'body'));
         });
         // Sun is below the horizon: dim the directional light (planet shadow).
         const occl = dist < b.radius * 3 ? THREE.MathUtils.smoothstep(sunUp, -0.18, 0.05) : 1;
@@ -775,6 +778,13 @@ export class Game {
     // Inside the hull the sun is mostly blocked; cabin lamps take over.
     const inside = this.mode === 'interior' || (this.mode === 'docked' && this.cameraMode !== 'third');
     if (inside) uni.sun.intensity *= 0.18;
+    // The hand-made hull is a shell: show the cabin only when viewed from inside.
+    const sm = this.ship?.model;
+    if (sm?.shell) {
+      const inCabin = !this.photo.active && (this.mode === 'interior' || (this.mode === 'pilot' && this.cameraMode !== 'third'));
+      sm.shell.visible = !inCabin;
+      sm.interior.visible = inCabin;
+    }
     const cabin = this.mode === 'interior' || this.mode === 'pilot' || this.mode === 'docked';
     if (this.ship) for (const l of this.ship.model.lamps) l.intensity = cabin ? (this.mode === 'pilot' ? 2 : 9) : 0;
     if (!active || !inAtmo) this.localHour = this.localHour ?? 12;

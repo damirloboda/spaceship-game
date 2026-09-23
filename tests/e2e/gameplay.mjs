@@ -91,7 +91,15 @@ try {
   check('jetpack lifts the player', altUp.alt - alt0 > 3, JSON.stringify(altUp));
   await page.screenshot({ path: `${OUT}/gp-jetpack.png` });
   await ev(() => window.__game.simulate(6));
-  // 6. Board the ship and install Nitro in the engine compartment
+  // Hand-made animated models are in use (ship hull, player, creatures).
+  const models = await ev(() => { const g = window.__game; const f = g.player.body.fauna; const c = f.spawnAt(g.player.pos.clone().addScaledVector(g.player.forward, 12)); return { shell: !!g.ship.model.shell, player: !!g.player.anim, creature: !!c?.anim, trees: g.player.body.scatter.species.filter((s) => s.model).length }; });
+  check('animated models loaded', models.shell && models.player && models.creature && models.trees > 5, JSON.stringify(models));
+  // 6. Board the ship from beside the cockpit (not only at the ramp)
+  await ev(() => { const g = window.__game; const s = g.ship; const side = s.body.spin.worldToLocal(s.root.localToWorld(new s.root.position.constructor(-7, -2.6, -6))); g.player.placeOnBody(s.body, side, null); });
+  await ev(() => window.__game.simulate(0.1));
+  const pSide = await ev(() => window.__game.interaction?.key);
+  check('board prompt beside the hull', pSide === 'prompt.enter_ship', pSide);
+  // Board the ship and install Nitro in the engine compartment
   await ev(() => { const g = window.__game; const s = g.ship; const ramp = s.body.spin.worldToLocal(s.root.localToWorld(new s.root.position.constructor(0, -2.6, 16))); g.player.placeOnBody(s.body, ramp, null); });
   await ev(() => window.__game.simulate(0.1));
   const p2 = await ev(() => window.__game.interaction?.key);

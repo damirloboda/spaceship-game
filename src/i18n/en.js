@@ -11,6 +11,7 @@ export default {
   'creator.title': 'Character creator',
   'creator.name': 'Name',
   'creator.default_name': 'Nova',
+  'creator.character': 'Character',
   'creator.suit': 'Suit colour',
   'creator.visor': 'Visor colour',
   'creator.build': 'Build',
