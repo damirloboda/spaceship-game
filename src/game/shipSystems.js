@@ -135,15 +135,17 @@ export class ShipSystems {
     return { maxSpeed, accel, overdrive: this.overdrive, lightbreakReady: lb.state === 'ready', noFuel };
   }
 
-  lightbreakCost(interstellar) {
-    return interstellar ? FLIGHT.interstellarFuel : FLIGHT.insystemFuel;
+  // Fuel estimate: interstellar jumps scale with distance in light years.
+  lightbreakCost(interstellar, distanceLy) {
+    if (!interstellar) return FLIGHT.insystemFuel;
+    return Number.isFinite(distanceLy) ? Math.round(12 + distanceLy * 0.45) : FLIGHT.interstellarFuel;
   }
 
-  engageLightbreak(interstellar) {
+  engageLightbreak(interstellar, distanceLy) {
     const lb = this.lightbreak;
     if (lb.state !== 'ready') return { ok: false, reason: 'not_ready' };
     if (this.isBroken('lightbreak')) return { ok: false, reason: 'drive_damaged' };
-    const cost = this.lightbreakCost(interstellar);
+    const cost = this.lightbreakCost(interstellar, distanceLy);
     if (this.fuel < cost) return { ok: false, reason: 'fuel' };
     this.fuel -= cost;
     lb.state = 'active';
