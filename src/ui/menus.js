@@ -35,6 +35,7 @@ export class Menus {
     this.current = this.stack[this.stack.length - 1];
     if (g.state && name !== 'main' && name !== 'creator') g.paused = true;
     g.input.releaseLock();
+    document.body.classList.add('menu-open');
     this.render();
     g.audio.play('ui');
   }
@@ -52,6 +53,7 @@ export class Menus {
     this.current = null;
     this.overlay.classList.add('hidden');
     this.overlay.replaceChildren();
+    document.body.classList.remove('menu-open');
     if (this.game.ship) this.game.ship.model.nitro.open = false;
     if (this.game.state) this.game.paused = false;
   }
@@ -301,7 +303,7 @@ export class Menus {
     const g = this.game;
     const here = systemPosition(g.state.location.systemId);
     if (!this.sectorCache || this.sectorCache.id !== g.state.location.systemId) {
-      this.sectorCache = { id: g.state.location.systemId, list: systemsNear(here, 60) };
+      this.sectorCache = { id: g.state.location.systemId, list: systemsNear(here, 36) };
     }
     return { here, list: this.sectorCache.list };
   }
@@ -341,10 +343,10 @@ export class Menus {
     }
     if (ms.tab === 'sector') {
       const { here, list } = this.mapData();
-      const scale = (Math.min(W, H) / 2 - 30) / 60;
+      const scale = (Math.min(W, H) / 2 - 30) / 36;
       const cx = W / 2, cy = H / 2;
       ctx.strokeStyle = 'rgba(100,160,220,0.15)';
-      for (const r of [20, 40, 60]) { ctx.beginPath(); ctx.arc(cx, cy, r * scale, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = 'rgba(120,170,220,0.4)'; ctx.fillText(`${r} LY`, cx + r * scale + 4, cy); }
+      for (const r of [12, 24, 36]) { ctx.beginPath(); ctx.arc(cx, cy, r * scale, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = 'rgba(120,170,220,0.4)'; ctx.fillText(`${r} LY`, cx + r * scale + 4, cy); }
       const target = g.navTarget?.systemId;
       for (const s of list) {
         const x = cx + (s.position[0] - here[0]) * scale;
@@ -352,9 +354,9 @@ export class Menus {
         const col = STAR_TYPES[s.starType].color;
         const visited = g.state.isDiscovered('systems', s.id);
         if (s.unknownRegion && !visited) {
-          ctx.fillStyle = `rgba(160,120,255,${0.3 + 0.2 * Math.sin(tnow * 2 + x)})`;
-          ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = '#b58bff'; ctx.fillText('???', x + 8, y - 6);
+          // Signal-dead region: a shimmer, no reliable data.
+          ctx.fillStyle = `rgba(160,120,255,${0.18 + 0.12 * Math.sin(tnow * 2 + x)})`;
+          ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
         } else {
           ctx.fillStyle = s.starType === 'black_hole' ? '#ff7b3d' : `rgb(${col.map((v) => Math.round(v * 255)).join(',')})`;
           ctx.beginPath(); ctx.arc(x, y, s.starType === 'black_hole' ? 5 : 3.5, 0, Math.PI * 2); ctx.fill();

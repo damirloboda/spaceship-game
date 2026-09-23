@@ -44,7 +44,7 @@ export class Game {
     setLanguage(this.settings.language);
     this.mobile = isMobileDevice();
     this.quality = { ...presetFor(this.settings), budgetMs: this.settings.platform === 'mobile' ? 3 : 5 };
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.mobile, logarithmicDepthBuffer: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.mobile, logarithmicDepthBuffer: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -779,7 +779,9 @@ export class Game {
       fog.density = base * (1 - altFrac * 0.9);
       this.stars.material.uniforms.uFade.value = 1 - THREE.MathUtils.smoothstep(daylight, 0.05, 0.35) * (1 - altFrac * altFrac);
       uni.ambient.color.copy(sky).lerp(new THREE.Color(1, 1, 1), 0.3);
-      uni.ambient.intensity = 0.12 + daylight * 0.45;
+      // Night keeps a faint blue skylight (starlight and ring-shine).
+      uni.ambient.intensity = 0.22 + daylight * 0.4;
+      if (daylight < 0.2) uni.ambient.color.lerp(new THREE.Color(0.45, 0.55, 0.9), 0.6);
     } else {
       fog.density = 0;
       this.stars.material.uniforms.uFade.value = 1;

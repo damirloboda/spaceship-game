@@ -9,7 +9,6 @@ export function createGalaxyBackground(seed = 7, width = 1024) {
   const height = width / 2;
   const data = new Uint8Array(width * height * 4);
   const n = new Noise3(seed);
-  const rng = new RNG(seed);
   for (let y = 0; y < height; y++) {
     const lat = (y / height - 0.5) * Math.PI;
     for (let x = 0; x < width; x++) {
@@ -31,13 +30,6 @@ export function createGalaxyBackground(seed = 7, width = 1024) {
       data[i + 2] = Math.min(255, b * 255);
       data[i + 3] = 255;
     }
-  }
-  // Faint background star dust baked in.
-  for (let s = 0; s < width * 3; s++) {
-    const x = rng.int(0, width - 1), y = rng.int(0, height - 1);
-    const i = (y * width + x) * 4;
-    const v = rng.range(60, 200);
-    data[i] = Math.max(data[i], v); data[i + 1] = Math.max(data[i + 1], v); data[i + 2] = Math.max(data[i + 2], v * 1.05);
   }
   const tex = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
   tex.mapping = THREE.EquirectangularReflectionMapping;

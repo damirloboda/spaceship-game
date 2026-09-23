@@ -88,6 +88,7 @@ export class TouchControls {
 
   setMode(mode) {
     this.mode = mode;
+    this.root.dataset.mode = mode;
     const inp = this.game.input;
     inp.touch.held.clear();
     const layout = LAYOUTS[mode] || [];
