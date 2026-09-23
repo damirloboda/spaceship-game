@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { bus } from '../core/events.js';
 import { log, guard } from '../core/log.js';
 import { storage } from '../core/storage.js';
@@ -32,6 +33,7 @@ import { Menus } from '../ui/menus.js';
 import { TouchControls } from '../ui/touch.js';
 import { PhotoMode } from '../ui/photo.js';
 import { Environment } from '../render/environment.js';
+import { atmosphereColor, GradeShader } from '../render/shaders.js';
 import { loadTerrainTextures } from '../render/textures.js';
 import { AsteroidFields } from '../render/asteroids.js';
 import { Weapons } from './weapons.js';
@@ -50,7 +52,7 @@ export class Game {
     this.quality = { ...presetFor(this.settings), budgetMs: this.settings.platform === 'mobile' ? 3 : 5 };
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.mobile, logarithmicDepthBuffer: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
@@ -110,6 +112,8 @@ export class Game {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5, 0.85);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
+      this.grade = new ShaderPass(GradeShader);
+      this.composer.addPass(this.grade);
     }
     this.useComposer = !!q.bloom;
     if (this.universe) for (const b of this.universe.bodies) b.setQuality(q);
@@ -305,6 +309,7 @@ export class Game {
       if (local.length() < b.soi) {
         b.terrain.warmup(local, 3500);
         b.scatter.flush();
+        b.grass?.flush(local);
       } else {
         b.terrain.update(local, 2);
       }
@@ -767,6 +772,7 @@ export class Game {
           b.fauna.update(dt, pl, { hostile: b.def.danger !== 'SAFE' });
           for (const ev of b.fauna.events.splice(0)) this.director.onFaunaEvent(b, ev);
           b.sealife?.update(dt, pl, !!(this.player?.swimming && this.player.body === b && this.player.mode === 'body'));
+          if (b.grass) b.grass.update(dt, b === active && dist - b.radius < 400 ? (pl || local) : null, 1.5);
         });
         // Sun is below the horizon: dim the directional light (planet shadow).
         const occl = dist < b.radius * 3 ? THREE.MathUtils.smoothstep(sunUp, -0.18, 0.05) : 1;
@@ -778,12 +784,17 @@ export class Game {
     // Inside the hull the sun is mostly blocked; cabin lamps take over.
     const inside = this.mode === 'interior' || (this.mode === 'docked' && this.cameraMode !== 'third');
     if (inside) uni.sun.intensity *= 0.18;
+    // The cabin is shielded from the sky: little skylight or reflections inside.
+    const cabinView = inside || (this.mode === 'pilot' && this.cameraMode !== 'third');
+    this.scene.environmentIntensity = inside ? 0.25 : cabinView ? 0.5 : 1;
     // The hand-made hull is a shell: show the cabin only when viewed from inside.
     const sm = this.ship?.model;
     if (sm?.shell) {
       const inCabin = !this.photo.active && (this.mode === 'interior' || (this.mode === 'pilot' && this.cameraMode !== 'third'));
       sm.shell.visible = !inCabin;
       sm.interior.visible = inCabin;
+      // From inside, the old close-fitting hull seals the cabin and canopy.
+      for (const o of sm.legacyHull) o.visible = inCabin;
     }
     const cabin = this.mode === 'interior' || this.mode === 'pilot' || this.mode === 'docked';
     if (this.ship) for (const l of this.ship.model.lamps) l.intensity = cabin ? (this.mode === 'pilot' ? 2 : 9) : 0;
@@ -792,17 +803,27 @@ export class Game {
     // Fog: aerial perspective inside atmospheres, heavy under water.
     const fog = this.scene.fog;
     if (active && inAtmo) {
-      const c = active.def.atmosphere.color;
-      const sky = new THREE.Color(c[0], c[1], c[2]);
-      const sunset = new THREE.Color(1.0, 0.5, 0.25);
-      const lowSun = 1 - Math.min(1, Math.abs(daylight - 0.5) * 2);
-      sky.lerp(sunset, lowSun * 0.35).multiplyScalar(0.25 + daylight * 0.75);
-      sky.lerp(new THREE.Color(0.35, 0.36, 0.4), this.weather.stormAmount * 0.6);
-      fog.color.copy(sky).multiplyScalar(0.8);
-      const base = (1 / 14000) * active.def.atmosphere.density * (w?.fog || 1);
+      // Fog takes the colour of the sky on the horizon in the view direction,
+      // from the same scattering model as the sky shader.
+      const u = active.atmoMaterial.uniforms;
+      const camA = u.uCam.value;
+      const upA = camA.clone().normalize();
+      const fwdW = this.camera.getWorldDirection(new THREE.Vector3());
+      const fwdA = fwdW.applyQuaternion(active.anchor.getWorldQuaternion(new THREE.Quaternion()).invert());
+      fwdA.addScaledVector(upA, -fwdA.dot(upA));
+      if (fwdA.lengthSq() < 1e-6) fwdA.set(1, 0, 0).cross(upA);
+      fwdA.normalize().addScaledVector(upA, 0.03).normalize();
+      const sky = atmosphereColor(u, camA, fwdA, this.fogSky || (this.fogSky = new THREE.Color()));
+      const zenith = atmosphereColor(u, camA, upA, this.zenithSky || (this.zenithSky = new THREE.Color()));
+      sky.r = Math.max(sky.r, 0.012); sky.g = Math.max(sky.g, 0.016); sky.b = Math.max(sky.b, 0.03);
+      sky.lerp(new THREE.Color(0.32, 0.33, 0.36).multiplyScalar(0.3 + daylight * 0.7), this.weather.stormAmount * 0.6);
+      fog.color.copy(sky);
+      const base = (1 / 22000) * active.def.atmosphere.density * (w?.fog || 1);
       fog.density = base * (1 - altFrac * 0.9);
       this.stars.material.uniforms.uFade.value = 1 - THREE.MathUtils.smoothstep(daylight, 0.05, 0.35) * (1 - altFrac * altFrac);
-      uni.ambient.color.copy(sky).lerp(new THREE.Color(1, 1, 1), 0.3);
+      // Skylight: the zenith colour, normalised, lights the shadows.
+      const zl = Math.max(zenith.r, zenith.g, zenith.b, 1e-4);
+      uni.ambient.color.setRGB(zenith.r / zl, zenith.g / zl, zenith.b / zl).lerp(new THREE.Color(1, 1, 1), 0.45);
       // Night keeps a faint blue skylight (starlight and ring-shine).
       uni.ambient.intensity = 0.22 + daylight * 0.4;
       if (daylight < 0.2) uni.ambient.color.lerp(new THREE.Color(0.45, 0.55, 0.9), 0.6);
@@ -817,17 +838,20 @@ export class Game {
       fog.density = 0.06;
     }
     if (this.weather.flash > 0) uni.ambient.intensity += this.weather.flash * 3;
+    if (this.mode === 'interior') uni.ambient.intensity *= 0.6;
     // Reflections: sky gradient inside atmospheres, the galaxy in space.
     const sunDir = new THREE.Vector3().sub(camWorld).normalize();
     const envState = { inAtmo: !!(active && inAtmo), sunDir, daylight };
     if (envState.inAtmo) {
       const upW = camWorld.clone().sub(active.anchor.getWorldPosition(new THREE.Vector3())).normalize();
-      const c = active.def.atmosphere.color;
       const k = 0.15 + daylight * 0.85;
       envState.up = upW;
-      envState.zenith = new THREE.Color(c[0] * 0.6, c[1] * 0.7, c[2]).multiplyScalar(k);
-      envState.horizon = fog.color.clone().multiplyScalar(1.4 * k + 0.05);
-      envState.ground = new THREE.Color(0.18, 0.2, 0.12).multiplyScalar(k);
+      envState.zenith = (this.zenithSky || new THREE.Color(0.2, 0.4, 0.9)).clone();
+      envState.horizon = (this.fogSky || fog.color).clone();
+      // Keep reflections in a sane range: the HDR sky can be very bright.
+      const peak = Math.max(envState.horizon.r, envState.horizon.g, envState.horizon.b, envState.zenith.r, envState.zenith.g, envState.zenith.b);
+      if (peak > 1.1) { envState.horizon.multiplyScalar(1.1 / peak); envState.zenith.multiplyScalar(1.1 / peak); }
+      envState.ground = new THREE.Color(0.16, 0.18, 0.11).multiplyScalar(k);
     }
     const envKey = envState.inAtmo ? 'a' : 's';
     guard('environment', () => this.environment.update(dt, envState, envKey !== this.lastEnvKey));
@@ -895,6 +919,12 @@ export class Game {
     this.tunnel.visible = tu.uIntensity.value > 0.02;
     this.tunnel.quaternion.copy(this.streaks.quaternion);
     if (this.bloom) this.bloom.strength = 0.35 + u.uIntensity.value * 0.6;
+    if (this.grade) {
+      const gu = this.grade.uniforms;
+      gu.uTime.value += dt;
+      gu.uRes.value.set(this.renderer.domElement.width, this.renderer.domElement.height);
+      gu.uGrain.value = this.settings.reducedMotion ? 0 : 0.016;
+    }
     const drive = lb !== 'none' ? 0.12 : od ? 0.07 : 0;
     this.audio.setLoop('drive', drive, 110 + u.uIntensity.value * 500);
     const eng = piloting || (this.mode === 'interior' && !ship.landed) ? 0.03 + ship.throttle * 0.05 : ship.landed ? 0 : 0.02;

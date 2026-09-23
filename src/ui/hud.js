@@ -12,6 +12,12 @@ const KEYS = {
   touch: { move: '◎', look: '⇆', jump: 'JUMP', jet: 'HOLD JUMP', scan: 'SCAN', mine: 'MINE', fire: 'FIRE', interact: 'USE', map: 'MAP', inventory: 'BAG', boost: 'BOOST', lightbreak: 'LB', throttle: '◎ ↕', view: 'VIEW', autopilot: 'AUTO', target: '—', photo: '📷' },
 };
 
+// Small glyphs in front of each gauge.
+const ROW_ICONS = {
+  'hud.health': '✚', 'hud.oxygen': 'O₂', 'hud.suit': 'ϟ', 'hud.jetfuel': '⇡', 'hud.heat': '♨', 'hud.overheat': '♨',
+  'hud.throttle': '»', 'hud.fuel': '◆', 'hud.nitro': 'N', 'hud.hull': '⬢', 'hud.weapons': '✦', 'hud.shield': '◈',
+};
+
 export class Hud {
   constructor(game, root) {
     this.game = game;
@@ -246,8 +252,13 @@ export class Hud {
   }
 
   row(key, pct, cls) {
-    const b = h('div', { class: `hrow ${cls || ''}` }, h('span', {}, t(key)), h('div', { class: 'bar' }, h('i')));
-    b.querySelector('i').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    const v = Math.max(0, Math.min(100, pct));
+    const b = h('div', { class: `hrow ${cls || ''}` },
+      h('b', { class: 'ic' }, ROW_ICONS[key] || '•'),
+      h('span', { class: 'lbl' }, t(key)),
+      h('em', {}, `${Math.round(v)}`),
+      h('div', { class: 'bar' }, h('i')));
+    b.querySelector('.bar i').style.width = `${v}%`;
     return b;
   }
 

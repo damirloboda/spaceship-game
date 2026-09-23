@@ -3,7 +3,7 @@
 // first-person arms and legs, optional third-person body.
 import * as THREE from 'three';
 import { humanoidModel, animateHumanoid, colorize, merge } from '../render/models.js';
-import { animatedInstance, CHARACTER_MODELS } from '../render/modelLib.js';
+import { animatedInstance, CHARACTER_MODELS, addHelmet } from '../render/modelLib.js';
 import { orientOnSurface } from '../render/fauna.js';
 import { INTERIOR } from '../render/shipModel.js';
 
@@ -53,6 +53,7 @@ export class Player {
     const charName = CHARACTER_MODELS[p.character | 0] || CHARACTER_MODELS[0];
     // Animated astronaut; the procedural humanoid is the fallback.
     this.anim = animatedInstance(charName, 1.8, { yaw: Math.PI, prefer: { idle: /^idle_gun$/i, walk: /^walk_gun$/i, run: /^run_gun$/i } });
+    if (this.anim) this.helmet = addHelmet(this.anim, { tint: visor.getHex() });
     this.model = this.anim ? this.anim.root : humanoidModel([[suit.r, suit.g, suit.b], [visor.r * 0.6, visor.g * 0.6, visor.b * 0.6]], 1.8, this.modelMat, { suit: true, accent: [visor.r, visor.g, visor.b] });
     this.object.add(this.model);
     // Jetpack on the back
@@ -401,7 +402,7 @@ export class Player {
       a.update(dt);
       this.model.visible = tp;
       this.jetpackMesh.visible = false;
-      this.fpArms.visible = !tp;
+      this.fpArms.visible = !tp && !this.game.photo?.active;
       const k = this.game.settings.reducedMotion ? 0 : 1;
       this.fpArms.position.set(Math.sin(this.bob * 1.6) * 0.012 * k, Math.abs(Math.cos(this.bob * 1.6)) * 0.015 * k - this.landImpact * 0.05, 0);
       this.landImpact = Math.max(0, this.landImpact - dt * 3);

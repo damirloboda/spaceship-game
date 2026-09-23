@@ -8,6 +8,7 @@ import { Terrain } from '../render/terrain.js';
 import { Scatter } from '../render/scatter.js';
 import { Fauna } from '../render/fauna.js';
 import { SeaLife } from '../render/sealife.js';
+import { GrassField } from '../render/grass.js';
 import { City, CITY_RADIUS } from '../render/city.js';
 import { Station } from '../render/station.js';
 import { createAtmosphereMaterial, createCloudMaterial, createRingMaterial, createWaterMaterial } from '../render/shaders.js';
@@ -64,6 +65,7 @@ export class Body {
     this.fauna = new Fauna(this, this.faunaSpecies, { max: q.creatures, ecosystem: ctx.ecosystem?.(def.id) || {} });
     this.spin.add(this.fauna.group);
     if (def.ocean) this.sealife = new SeaLife(this);
+    this.buildGrass(q);
     if (def.city && this.sites.city) {
       this.city = new City(this, this.sites.city, { name: def.city.name, civIndex: def.civilization ?? 0, seed: def.seed });
       this.spin.add(this.city.group);
@@ -141,7 +143,8 @@ export class Body {
   buildAtmosphere(q) {
     const def = this.def;
     if (def.atmosphere) {
-      const mat = createAtmosphereMaterial({ radius: this.radius, top: this.atmoTop, color: def.atmosphere.color, density: def.atmosphere.density });
+      const hq = (q.clouds || 0) >= 2;
+      const mat = createAtmosphereMaterial({ radius: this.radius, top: this.atmoTop, color: def.atmosphere.color, density: def.atmosphere.density, steps: hq ? 12 : 8, lightSteps: hq ? 4 : 3 });
       this.atmoMaterial = mat;
       this.atmo = new THREE.Mesh(new THREE.SphereGeometry(this.atmoTop, 96, 48), mat);
       this.atmo.renderOrder = 5;
@@ -174,7 +177,7 @@ export class Body {
   setFogEnabled(on) {
     if (on === this.currentFog) return;
     this.currentFog = on;
-    const mats = [this.terrainMaterial, this.waterMaterial, ...(this.scatter?.species.flatMap((s) => s.meshes.map((m) => m.material)) || []), ...Object.values(this.scatter?.depositMeshes || {}).map((m) => m.material), this.fauna?.material, this.fauna?.glowMaterial, ...(this.city?.materials || [])];
+    const mats = [this.terrainMaterial, this.waterMaterial, this.grass?.material, ...(this.scatter?.species.flatMap((s) => s.meshes.map((m) => m.material)) || []), ...Object.values(this.scatter?.depositMeshes || {}).map((m) => m.material), this.fauna?.material, this.fauna?.glowMaterial, ...(this.city?.materials || [])];
     for (const m of mats) {
       if (!m) continue;
       m.fog = on;
@@ -185,6 +188,17 @@ export class Body {
   setQuality(q) {
     this.terrain.setQuality(q.grid, q.split);
     this.fauna.max = q.creatures;
+    this.grass?.dispose();
+    this.buildGrass(q);
+  }
+
+  // Dense grass blades near the player on worlds with life.
+  buildGrass(q) {
+    this.grass = null;
+    if (!this.def.life || !this.def.atmosphere) return;
+    const f = Math.min(1.3, q.flora ?? 1);
+    this.grass = new GrassField(this, { radius: 14 + 22 * f, perTile: Math.round(40 + 120 * Math.min(1, f) * Math.min(1, f)) });
+    if (this.currentFog !== undefined) this.grass.material.fog = this.currentFog;
   }
 
   // ---- queries (all in body-local coordinates) ----
@@ -247,6 +261,7 @@ export class Body {
     this.scatter.dispose();
     this.fauna.dispose();
     this.sealife?.dispose();
+    this.grass?.dispose();
     this.city?.dispose();
     this.station?.dispose();
     this.terrainMaterial.dispose();

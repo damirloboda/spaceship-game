@@ -9,8 +9,8 @@ const toLin = (c) => c.map((v) => Math.pow(v, 2.2));
 export const BIOMES = {
   seabed: { color: [0.36, 0.33, 0.26], material: 'sand' },
   beach: { color: [0.8, 0.73, 0.52], material: 'sand' },
-  grassland: { color: [0.36, 0.56, 0.2], material: 'grass' },
-  forest: { color: [0.2, 0.4, 0.15], material: 'grass' },
+  grassland: { color: [0.4, 0.6, 0.22], material: 'grass' },
+  forest: { color: [0.27, 0.46, 0.17], material: 'grass' },
   savanna: { color: [0.58, 0.55, 0.3], material: 'grass' },
   wetland: { color: [0.25, 0.33, 0.18], material: 'mud' },
   rock: { color: [0.43, 0.41, 0.39], material: 'rock' },

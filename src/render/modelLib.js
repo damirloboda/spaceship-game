@@ -12,14 +12,14 @@ import { log } from '../core/log.js';
 // Flora model sets per planet style and plant form.
 export const FLORA_MODELS = {
   terran: {
-    conifer: ['PineTree_1', 'PineTree_2', 'PineTree_3', 'PineTree_4', 'PineTree_Autumn_1'],
-    broadleaf: ['CommonTree_1', 'CommonTree_2', 'CommonTree_3', 'CommonTree_4', 'CommonTree_5', 'BirchTree_1', 'BirchTree_2', 'BirchTree_3', 'Willow_1', 'Willow_2', 'CommonTree_Autumn_1', 'CommonTree_Autumn_2'],
-    palm: ['PalmTree_1', 'PalmTree_2', 'PalmTree_3'],
-    bush: ['Bush_1', 'Bush_2', 'BushBerries_1', 'BushBerries_2'],
+    conifer: ['PineTree_1', 'PineTree_2', 'PineTree_3', 'PineTree_4'],
+    broadleaf: ['CommonTree_1', 'CommonTree_2', 'CommonTree_3', 'CommonTree_4', 'CommonTree_5', 'BirchTree_1', 'BirchTree_2', 'BirchTree_3', 'Willow_1', 'Willow_2'],
+    palm: ['ph_quiver_tree_01', 'ph_quiver_tree_02'],
+    bush: ['ph_fern_02#0', 'ph_fern_02#1', 'ph_fern_02#2', 'ph_fern_02#3', 'ph_shrub_04', 'ph_shrub_03#0', 'ph_shrub_03#1', 'BushBerries_1'],
     reed: ['Grass', 'Grass_2', 'Wheat', 'Grass_Short'],
-    frond: ['Plant_1', 'Plant_2', 'Plant_3', 'Plant_4', 'Flowers'],
-    coral: ['Plant_3', 'Plant_4', 'Lilypad'],
-    rock: ['Rock_1', 'Rock_2', 'Rock_3', 'Rock_4', 'Rock_Moss_1', 'Rock_Moss_2'],
+    frond: ['ph_flower_gazania#0', 'ph_flower_gazania#2', 'ph_flower_gazania#4', 'ph_periwinkle_plant#0', 'ph_periwinkle_plant#2', 'ph_periwinkle_plant#4', 'ph_dandelion_01#0', 'ph_dandelion_01#2', 'ph_celandine_01#0', 'ph_fern_02#1'],
+    coral: ['ph_fern_02#2', 'ph_periwinkle_plant#1', 'Lilypad'],
+    rock: ['ph_rock_moss_set_01#0', 'ph_rock_moss_set_01#1', 'ph_rock_moss_set_01#2', 'ph_rock_moss_set_01#3', 'ph_rock_moss_set_02#0', 'ph_rock_moss_set_02#1', 'ph_rock_moss_set_02#4', 'ph_rock_moss_set_02#6', 'ph_boulder_01', 'ph_namaqualand_boulder_02'],
   },
   ice: {
     conifer: ['PineTree_Snow_1', 'PineTree_Snow_2', 'BirchTree_Snow_1'],
@@ -30,8 +30,10 @@ export const FLORA_MODELS = {
   },
   desert: {
     cactus: ['Cactus_1', 'Cactus_2', 'Cactus_3', 'CactusFlowers_2', 'CactusFlowers_3'],
-    bush: ['Bush_2'],
-    spire: ['CommonTree_Dead_1', 'Willow_Dead_1'],
+    bush: ['ph_shrub_04', 'ph_shrub_03#2'],
+    spire: ['ph_quiver_tree_01', 'ph_quiver_tree_02', 'CommonTree_Dead_1'],
+    palm: ['ph_quiver_tree_01', 'ph_quiver_tree_02'],
+    rock: ['ph_namaqualand_boulder_02', 'ph_boulder_01'],
   },
   alien: {
     broadleaf: ['usk_Tree_Swirl', 'usk_Tree_Blob', 'usk_Tree_Light', 'usk_Tree_Swirl-iLxXSXIx2t', 'usk_Tree_Blob-QHYRrAnKzW'],
@@ -52,11 +54,43 @@ export const FLORA_MODELS = {
     spire: ['CommonTree_Dead_1', 'BirchTree_Dead_1', 'Willow_Dead_1'],
     bush: ['TreeStump', 'WoodLog'],
     bulb: ['usk_Plant-s0joFFrQoy'],
+    rock: ['ph_boulder_01', 'ph_namaqualand_boulder_02', 'ph_rock_moss_set_02#4'],
   },
 };
 
 // Planet type -> flora style (first match wins, then 'alien').
 const FLORA_STYLE = { terran: ['terran'], ocean: ['terran'], ice: ['ice', 'terran'], desert: ['desert', 'dead'], lava: ['lava', 'alien'], radioactive: ['dead', 'alien'], barren: ['dead'] };
+
+// Real-world heights (m) of photoscanned plants and rocks; others use the
+// species height.
+const MODEL_HEIGHT = {
+  ph_fern_02: 0.9, ph_shrub_04: 1.3, ph_shrub_03: 0.8, ph_flower_gazania: 0.28, ph_periwinkle_plant: 0.3,
+  ph_dandelion_01: 0.3, ph_celandine_01: 0.25, ph_rock_moss_set_01: 0.9, ph_rock_moss_set_02: 1.0,
+  ph_boulder_01: 2.4, ph_namaqualand_boulder_02: 1.8,
+};
+export function modelHeight(name) { return MODEL_HEIGHT[baseName(name)]; }
+
+// Level of detail for heavy photoscans (a simplified copy beyond `dist` m)
+// and draw distances for small plants.
+const MODEL_LOD = {
+  ph_quiver_tree_01: { lod: 'ph_quiver_tree_01_lod', dist: 170 },
+  ph_quiver_tree_02: { lod: 'ph_quiver_tree_02_lod', dist: 170 },
+  ph_boulder_01: { lod: 'ph_boulder_01_lod', dist: 140 },
+  ph_namaqualand_boulder_02: { lod: 'ph_namaqualand_boulder_02_lod', dist: 140 },
+};
+const MODEL_CULL = {
+  ph_flower_gazania: 90, ph_periwinkle_plant: 90, ph_dandelion_01: 90, ph_celandine_01: 80, ph_fern_02: 200,
+  ph_shrub_03: 170, ph_shrub_04: 240, ph_rock_moss_set_01: 450, ph_rock_moss_set_02: 450,
+};
+// Stylised trees, cacti and bushes ship a *_lod copy with ~12% of the triangles.
+const AUTO_LOD = /^(PineTree|CommonTree|BirchTree|Willow|usk_Tree_|Cactus_|CactusFlowers|usk_Bush)/;
+export function modelLod(name) {
+  const b = baseName(name);
+  if (MODEL_LOD[b]) return MODEL_LOD[b];
+  return AUTO_LOD.test(b) && hasModel(`${b}_lod`) ? { lod: `${b}_lod`, dist: 150 } : null;
+}
+export function modelCull(name) { return MODEL_CULL[baseName(name)] || 0; }
+export function baseName(name) { return name.split('#')[0]; }
 
 export function floraModelFor(planetType, form, rng) {
   const styles = FLORA_STYLE[planetType] || ['alien'];
@@ -98,7 +132,9 @@ export const SEA_MODELS = ['Fish1', 'Fish2', 'Fish3', 'Manta_ray', 'Dolphin', 'S
 
 export function allModelNames() {
   const names = new Set([SHIP_MODEL, ...CHARACTER_MODELS, ...SEA_MODELS, ...Object.keys(CREATURE_MODELS), 'usk_Mech', 'usk_Mech-D5wW2jDO42']);
-  for (const style of Object.values(FLORA_MODELS)) for (const list of Object.values(style)) list.forEach((n) => names.add(n));
+  for (const style of Object.values(FLORA_MODELS)) for (const list of Object.values(style)) list.forEach((n) => names.add(baseName(n)));
+  for (const l of Object.values(MODEL_LOD)) names.add(l.lod);
+  for (const n of [...names]) if (AUTO_LOD.test(n)) names.add(`${n}_lod`);
   return [...names];
 }
 
@@ -109,6 +145,23 @@ let loader = null;
 // Hosts that cannot serve .glb get the same files as base64 text (.glb.txt).
 let format = null; // 'glb' | 'txt'
 
+// Bundles: models.json lists chunk files, each a JSON map name -> base64 GLB.
+let bundleIndex = null;
+const chunkCache = new Map();
+async function bundled(name, base) {
+  if (!bundleIndex) {
+    bundleIndex = fetch(`${base}models.json`).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+  }
+  const index = await bundleIndex;
+  const chunk = index.files[name];
+  if (!chunk) throw new Error(`${name} not in bundle`);
+  if (!chunkCache.has(chunk)) chunkCache.set(chunk, fetch(`${base}${chunk}`).then((r) => r.json()));
+  return (await chunkCache.get(chunk))[name];
+}
+
 async function fetchModel(name, base) {
   const tryGlb = async () => {
     const r = await fetch(`${base}${name}.glb`);
@@ -116,9 +169,8 @@ async function fetchModel(name, base) {
     return r.arrayBuffer();
   };
   const tryTxt = async () => {
-    const r = await fetch(`${base}${name}.glb.txt`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const bin = atob((await r.text()).trim());
+    const b64 = await bundled(name, base);
+    const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return bytes.buffer;
@@ -148,7 +200,7 @@ export async function preloadModels(names = allModelNames(), onProgress = () => 
   await Promise.all(names.slice(1).map(loadOne));
 }
 
-export function hasModel(name) { return cache.has(name); }
+export function hasModel(name) { return cache.has(baseName(name)); }
 export function modelBox(name) { return cache.get(name)?.box; }
 
 // Plain float copy of the attributes we need (glTF data is quantized).
@@ -168,17 +220,25 @@ function toFloat(geo, keep) {
 
 // Static meshes baked into one geometry per material, normalized so the model
 // stands on y = 0, is centred in XZ and is 1 unit tall. For instancing.
+// `name#i` takes only the i-th mesh of a set (photoscan packs hold several
+// variants side by side).
+const partsCache = new Map();
 export function staticParts(name) {
-  const rec = cache.get(name);
+  if (partsCache.has(name)) return partsCache.get(name);
+  const rec = cache.get(baseName(name));
   if (!rec) return null;
-  if (rec.parts) return rec.parts;
-  const { box } = rec;
+  const part = name.includes('#') ? Number(name.split('#')[1]) : -1;
+  const meshes = [];
+  rec.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  const use = part >= 0 ? meshes.filter((_, i) => i === part) : meshes;
+  if (!use.length) return null;
+  const box = new THREE.Box3();
+  for (const o of use) box.union(new THREE.Box3().setFromObject(o));
   const h = Math.max(1e-3, box.max.y - box.min.y);
   const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
   const norm = new THREE.Matrix4().makeScale(1 / h, 1 / h, 1 / h).multiply(new THREE.Matrix4().makeTranslation(-cx, -box.min.y, -cz));
   const byMat = new Map();
-  rec.scene.traverse((o) => {
-    if (!o.isMesh) return;
+  for (const o of use) {
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     const base = toFloat(o.geometry, ['position', 'normal', 'uv', 'color']);
     base.applyMatrix4(new THREE.Matrix4().multiplyMatrices(norm, o.matrixWorld));
@@ -193,18 +253,18 @@ export function staticParts(name) {
       if (!byMat.has(m)) byMat.set(m, []);
       byMat.get(m).push(geo);
     }
-  });
-  rec.parts = [];
+  }
+  const parts = [];
   for (const [material, geos] of byMat) {
     // Attribute sets must match to merge.
     const keys = geos.map((g) => Object.keys(g.attributes).sort().join());
     const sameKeys = keys.every((k) => k === keys[0]);
     const geometry = geos.length === 1 ? geos[0] : sameKeys ? mergeGeometries(geos) : geos[0];
     geometry.computeBoundingSphere();
-    rec.parts.push({ geometry, material });
+    parts.push({ geometry, material });
   }
-  rec.height = h;
-  return rec.parts;
+  partsCache.set(name, parts);
+  return parts;
 }
 
 // A skinned, animated instance. Returns { root, mixer, play(state), update(dt) }.
@@ -303,6 +363,25 @@ function meshRelativeSkinning(root) {
     mesh.bindMatrix.identity();
     mesh.bindMatrixInverse.identity();
   });
+}
+
+// Glass helmet bubble on a character's Head bone (radius and lift in metres).
+export function addHelmet(inst, { radius = 0.33, lift = 0.2, tint = 0x9fd8ff } = {}) {
+  let head = null;
+  inst.root.traverse((o) => { if (o.isBone && /^head$/i.test(o.name)) head = o; });
+  if (!head) return null;
+  inst.root.updateMatrixWorld(true);
+  const ws = head.getWorldScale(new THREE.Vector3()).x / inst.root.getWorldScale(new THREE.Vector3()).x;
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: tint, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.22,
+    envMapIntensity: 2.2, clearcoat: 1, clearcoatRoughness: 0.03, depthWrite: false, side: THREE.FrontSide,
+  });
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(radius / ws, 32, 20), mat);
+  glass.position.y = lift / ws;
+  glass.renderOrder = 2;
+  glass.castShadow = false;
+  head.add(glass);
+  return glass;
 }
 
 // Static (non-skinned) clone scaled to a target height or length.

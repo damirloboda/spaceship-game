@@ -3,7 +3,7 @@
 // InstancedMesh per species, rebuilt only when the set of chunks changes.
 import * as THREE from 'three';
 import { RNG, hashMix, hashString } from '../core/rng.js';
-import { floraModelFor, staticParts } from './modelLib.js';
+import { floraModelFor, staticParts, modelHeight, modelLod, modelCull } from './modelLib.js';
 import { cubeToSphere } from './terrain.js';
 import { plantGeometry, depositGeometry, DEPOSIT_TYPES } from './models.js';
 
@@ -66,10 +66,13 @@ export class Scatter {
         meshes = parts.map((part) => {
           const mat = part.material.clone();
           if (sp.glow) { mat.emissive = new THREE.Color(sp.leaf[0], sp.leaf[1], sp.leaf[2]).multiplyScalar(sp.glow * 0.35); }
-          if (sp.form !== 'rock') this.addSway(mat, 1);
+          if (sp.form !== 'rock' && !modelName.startsWith('ph_boulder') && !modelName.startsWith('ph_rock') && !modelName.startsWith('ph_namaqualand')) this.addSway(mat, 1);
           return new THREE.InstancedMesh(part.geometry, mat, cap);
         });
         for (const m of meshes.slice(1)) m.instanceMatrix = meshes[0].instanceMatrix;
+        // Per-instance tint so a forest of one model does not look cloned.
+        const tint = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+        for (const m of meshes) m.instanceColor = tint;
       } else {
         const geo = plantGeometry(sp);
         const mat = new THREE.MeshStandardMaterial({
@@ -91,9 +94,27 @@ export class Scatter {
       }
       const mesh = meshes[0];
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      // Simplified copy for distant instances, sharing the near materials.
+      let lodMeshes = null, lodDist = Infinity;
+      const lod = parts?.length ? modelLod(modelName) : null;
+      const lodParts = lod ? staticParts(lod.lod) : null;
+      if (lodParts?.length) {
+        lodMeshes = lodParts.map((lp, k) => {
+          // Reuse the near material with the same name (same colours, sway).
+          const near = meshes.find((m) => m.material.name && m.material.name === lp.material.name) || meshes[k] || meshes[0];
+          return new THREE.InstancedMesh(lp.geometry, near.material, cap);
+        });
+        for (const m of lodMeshes.slice(1)) m.instanceMatrix = lodMeshes[0].instanceMatrix;
+        const lodTint = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+        for (const m of lodMeshes) m.instanceColor = lodTint;
+        for (const m of lodMeshes) { m.count = 0; m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; this.group.add(m); }
+        lodMeshes[0].instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        lodDist = lod.dist;
+      }
+      const cullDist = parts?.length ? modelCull(modelName) : 0;
       // Models are 1 unit tall: instance scale carries the species height.
-      const unitScale = parts?.length ? sp.height : 1;
-      return { def: sp, pref, mesh, meshes, cap, index: i, unitScale, model: parts?.length ? modelName : null };
+      const unitScale = parts?.length ? (modelHeight(modelName) ?? sp.height) : 1;
+      return { def: sp, pref, mesh, meshes, lodMeshes, lodDist, cullDist, cap, index: i, unitScale, model: parts?.length ? modelName : null };
     });
     const weights = DEPOSIT_WEIGHTS[body.def.type] || DEPOSIT_WEIGHTS.default;
     this.depositWeights = Object.entries(weights).map(([v, w]) => ({ v, w }));
@@ -112,7 +133,7 @@ export class Scatter {
       this.depositMeshes[type] = mesh;
     }
     this.activeDeposits = [];
-    this.maxDistance = 1600 * Math.sqrt(density);
+    this.maxDistance = 1300 * Math.sqrt(density);
     this.lastFocus = new THREE.Vector3(Infinity, 0, 0);
   }
 
@@ -177,7 +198,8 @@ export class Scatter {
         const us = sc * sp.unitScale;
         scale.set(us, us * (0.9 + rng.next() * 0.2), us);
         m.compose(pos, q, scale);
-        chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc });
+        const tv = 0.85 + rng.next() * 0.3, warm = (rng.next() - 0.5) * 0.16;
+        chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc, tint: [tv * (1 + warm), tv, tv * (1 - warm)] });
       }
     }
     if (node.level === this.depositLevel) {
@@ -212,6 +234,7 @@ export class Scatter {
 
   rebuild() {
     const counts = this.species.map(() => 0);
+    const lodCounts = this.species.map(() => 0);
     const dcounts = {};
     for (const t of Object.keys(this.depositMeshes)) dcounts[t] = 0;
     this.activeDeposits = [];
@@ -223,11 +246,23 @@ export class Scatter {
         for (const dep of chunk.deposits) if (!dep.mined) this.activeDeposits.push(dep);
         continue;
       }
+      const known = Number.isFinite(focus.x);
       for (const p of chunk.plants) {
         const sp = this.species[p.sp];
+        const d = known ? p.pos.distanceTo(focus) : 0;
+        if (sp.cullDist && d > sp.cullDist) continue;
+        if (sp.lodMeshes && d > sp.lodDist) {
+          const c = lodCounts[p.sp];
+          if (c >= sp.cap) continue;
+          sp.lodMeshes[0].instanceMatrix.array.set(p.matrix, c * 16);
+          sp.lodMeshes[0].instanceColor?.array.set(p.tint, c * 3);
+          lodCounts[p.sp] = c + 1;
+          continue;
+        }
         const c = counts[p.sp];
         if (c >= sp.cap) continue;
         sp.mesh.instanceMatrix.array.set(p.matrix, c * 16);
+        if (sp.model) sp.mesh.instanceColor.array.set(p.tint, c * 3);
         counts[p.sp] = c + 1;
       }
       for (const dep of chunk.deposits) {
@@ -243,6 +278,12 @@ export class Scatter {
     this.species.forEach((sp, i) => {
       for (const m of sp.meshes) m.count = counts[i];
       sp.mesh.instanceMatrix.needsUpdate = true;
+      if (sp.mesh.instanceColor) sp.mesh.instanceColor.needsUpdate = true;
+      if (sp.lodMeshes) {
+        for (const m of sp.lodMeshes) m.count = lodCounts[i];
+        sp.lodMeshes[0].instanceMatrix.needsUpdate = true;
+        sp.lodMeshes[0].instanceColor.needsUpdate = true;
+      }
     });
     for (const [t, mesh] of Object.entries(this.depositMeshes)) {
       mesh.count = dcounts[t];
@@ -253,7 +294,7 @@ export class Scatter {
 
   update(dt, budgetMs = 2, focus = null) {
     this.time.value += dt;
-    if (focus && focus.distanceToSquared(this.lastFocus) > 120 * 120) {
+    if (focus && focus.distanceToSquared(this.lastFocus) > 40 * 40) {
       this.lastFocus.copy(focus);
       this.dirty = true;
     }
@@ -341,7 +382,10 @@ export class Scatter {
   }
 
   dispose() {
-    for (const sp of this.species) for (const m of sp.meshes) { if (!sp.model) m.geometry.dispose(); m.material.dispose(); m.dispose(); }
+    for (const sp of this.species) {
+      for (const m of sp.meshes) { if (!sp.model) m.geometry.dispose(); m.material.dispose(); m.dispose(); }
+      for (const m of sp.lodMeshes || []) m.dispose();
+    }
     for (const mesh of Object.values(this.depositMeshes)) { mesh.geometry.dispose(); mesh.material.dispose(); mesh.dispose(); }
   }
 }

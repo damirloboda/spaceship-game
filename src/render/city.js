@@ -6,7 +6,7 @@ import { RNG, hashString } from '../core/rng.js';
 import { tangentFrame, offsetOnSphere } from '../world/planetGen.js';
 import { generateCitizens, CIVILIZATIONS } from '../world/civGen.js';
 import { colorize, merge, humanoidModel, animateHumanoid } from './models.js';
-import { animatedInstance, CHARACTER_MODELS } from './modelLib.js';
+import { animatedInstance, CHARACTER_MODELS, addHelmet } from './modelLib.js';
 import { orientOnSurface } from './fauna.js';
 
 const LAYOUT = [
@@ -288,6 +288,7 @@ export class City {
     const name = robot ? (hsh % 20 === 0 ? 'usk_Mech' : 'usk_Mech-D5wW2jDO42') : CHARACTER_MODELS[hsh % CHARACTER_MODELS.length];
     const anim = animatedInstance(name, robot ? c.height * 1.25 : c.height, { yaw: Math.PI });
     let model;
+    if (anim && !robot) addHelmet(anim, { radius: 0.33 * (c.height / 1.8), lift: 0.2 * (c.height / 1.8) });
     if (anim) model = anim.root;
     else {
       const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true });

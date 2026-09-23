@@ -47,18 +47,38 @@ float snoise(vec3 v){
 }
 `;
 
-// Single-scattering-ish atmosphere, raymarched against analytic spheres in the
-// shell's object space. Works from space (front faces) and from inside (back).
-export function createAtmosphereMaterial({ radius, top, color, density }) {
+// Physically based single scattering (Rayleigh + Mie), raymarched against
+// analytic spheres in the shell's object space. Works from space (front
+// faces) and from inside (back faces). Coefficients are expressed as zenith
+// optical depths so tiny game planets get Earth-like skies: deep blue zenith,
+// bright horizon, a sun disc and orange sunsets. The planet's atmosphere
+// colour tints the Rayleigh spectrum (red-orange skies on dusty worlds).
+export function atmosphereParams({ radius, top, color, density }) {
+  const height = top - radius;
+  const HR = height * 0.22, HM = height * 0.06;
+  const mx = Math.max(color[0], color[1], color[2], 1e-3);
+  const tau = color.map((c) => 0.265 * Math.pow(Math.max(c, 0.02) / mx, 1.6) * density);
+  return {
+    betaR: new THREE.Vector3(tau[0] / HR, tau[1] / HR, tau[2] / HR),
+    betaM: (0.012 + 0.01 * Math.max(0, density - 0.8)) / HM,
+    HR, HM,
+  };
+}
+
+export function createAtmosphereMaterial({ radius, top, color, density, steps = 12, lightSteps = 4 }) {
+  const P = atmosphereParams({ radius, top, color, density });
   return new THREE.ShaderMaterial({
+    defines: { STEPS: steps, LSTEPS: lightSteps },
     uniforms: {
       uCam: { value: new THREE.Vector3() },
       uSun: { value: new THREE.Vector3(1, 0, 0) },
       uR: { value: radius },
       uRa: { value: top },
-      uH: { value: (top - radius) * 0.28 },
-      uColor: { value: new THREE.Color(color[0], color[1], color[2]) },
-      uDensity: { value: density },
+      uHR: { value: P.HR },
+      uHM: { value: P.HM },
+      uBetaR: { value: P.betaR },
+      uBetaM: { value: P.betaM },
+      uSunI: { value: 22 },
       uStorm: { value: 0 },
     },
     vertexShader: V_HEAD + /* glsl */`
@@ -69,8 +89,9 @@ export function createAtmosphereMaterial({ radius, top, color, density }) {
         ${V_TAIL}
       }`,
     fragmentShader: F_HEAD + /* glsl */`
-      uniform vec3 uCam; uniform vec3 uSun; uniform float uR; uniform float uRa; uniform float uH;
-      uniform vec3 uColor; uniform float uDensity; uniform float uStorm;
+      uniform vec3 uCam; uniform vec3 uSun; uniform float uR; uniform float uRa;
+      uniform float uHR; uniform float uHM; uniform vec3 uBetaR; uniform float uBetaM;
+      uniform float uSunI; uniform float uStorm;
       varying vec3 vPos;
       vec2 rs(vec3 ro, vec3 rd, float r){ float b=dot(ro,rd); float c=dot(ro,ro)-r*r; float h=b*b-c; if(h<0.0) return vec2(1e20,-1e20); h=sqrt(h); return vec2(-b-h,-b+h); }
       void main(){
@@ -83,30 +104,40 @@ export function createAtmosphereMaterial({ radius, top, color, density }) {
         bool hitGround = p.x > 0.0;
         if (hitGround) t1 = min(t1, p.x);
         if (t1 <= t0) discard;
-        const int STEPS = 10;
         float seg = (t1 - t0) / float(STEPS);
-        float od = 0.0; vec3 sum = vec3(0.0); float lit = 0.0;
+        vec3 sumR = vec3(0.0), sumM = vec3(0.0);
+        float odR = 0.0, odM = 0.0;
+        vec3 betaM3 = vec3(uBetaM * 1.1);
         for (int i = 0; i < STEPS; i++) {
           vec3 q = uCam + rd * (t0 + seg * (float(i) + 0.5));
-          float hq = max(length(q) - uR, 0.0);
-          float d = exp(-hq / uH) * seg / uH;
-          od += d;
-          float sunAmt = clamp(dot(normalize(q), uSun) * 3.0 + 0.25, 0.0, 1.0);
-          float att = exp(-od * 0.22);
-          sum += d * sunAmt * att;
-          lit += d * sunAmt;
+          float h = max(length(q) - uR, 0.0);
+          float dR = exp(-h / uHR) * seg, dM = exp(-h / uHM) * seg;
+          odR += dR; odM += dM;
+          vec2 ls = rs(q, uSun, uRa);
+          float lseg = max(ls.y, 0.0) / float(LSTEPS);
+          float lR = 0.0, lM = 0.0; bool shadow = false;
+          for (int j = 0; j < LSTEPS; j++) {
+            vec3 lq = q + uSun * lseg * (float(j) + 0.5);
+            float lh = length(lq) - uR;
+            if (lh < 0.0) { shadow = true; break; }
+            lR += exp(-lh / uHR) * lseg; lM += exp(-lh / uHM) * lseg;
+          }
+          if (!shadow) {
+            vec3 att = exp(-(uBetaR * (odR + lR) + betaM3 * (odM + lM)));
+            sumR += att * dR; sumM += att * dM;
+          }
         }
         float mu = dot(rd, uSun);
-        float phaseR = 0.75 * (1.0 + mu * mu);
-        float phaseM = pow(max(mu, 0.0), 12.0) * 2.5 + pow(max(mu, 0.0), 3.0) * 0.3;
-        vec3 sunset = vec3(1.0, 0.45, 0.2);
-        float lowSun = 1.0 - clamp(abs(dot(normalize(uCam), uSun)) * 2.5, 0.0, 1.0);
-        vec3 tint = mix(uColor, mix(uColor, sunset, 0.65), lowSun * 0.6);
-        vec3 col = sum * uDensity * (tint * phaseR * 0.45 + vec3(1.0, 0.9, 0.75) * phaseM * 0.25);
-        col = mix(col, vec3(dot(col, vec3(0.33))) * 0.6, uStorm);
-        float litFrac = lit / max(od, 1e-4);
-        float alpha = (1.0 - exp(-od * 0.5 * uDensity)) * mix(0.08, 0.92, litFrac) * (hitGround ? 0.55 : 1.0);
-        gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
+        float phaseR = 0.0597 * (1.0 + mu * mu);
+        const float g = 0.78;
+        float phaseM = 0.1194 * ((1.0 - g * g) * (1.0 + mu * mu)) / ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
+        vec3 col = uSunI * (sumR * uBetaR * phaseR + sumM * uBetaM * phaseM);
+        vec3 T = exp(-(uBetaR * odR + betaM3 * odM));
+        if (!hitGround) col += smoothstep(0.99955, 0.9998, mu) * T * uSunI * 6.0;
+        col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * 0.55, uStorm);
+        float alpha = clamp(1.0 - dot(T, vec3(0.3333)), 0.0, 1.0);
+        if (!hitGround) alpha = max(alpha, clamp(dot(col, vec3(0.5)), 0.0, 1.0));
+        gl_FragColor = vec4(col, alpha);
         ${F_TAIL}
       }`,
     transparent: true,
@@ -116,6 +147,55 @@ export function createAtmosphereMaterial({ radius, top, color, density }) {
     blendDst: THREE.OneMinusSrcAlphaFactor,
     side: THREE.FrontSide,
   });
+}
+
+// CPU version of the sky model above: colour of the sky along `dir` seen
+// from `cam` (both in the atmosphere's object space). Used for fog so distant
+// terrain melts into exactly the sky behind it.
+const _q = new THREE.Vector3(), _lq = new THREE.Vector3();
+function raySphere(ro, rd, r) {
+  const b = ro.dot(rd), c = ro.lengthSq() - r * r, h = b * b - c;
+  if (h < 0) return [1e20, -1e20];
+  const s = Math.sqrt(h);
+  return [-b - s, -b + s];
+}
+export function atmosphereColor(u, cam, dir, out = new THREE.Color(), steps = 8, lsteps = 3) {
+  const R = u.uR.value, Ra = u.uRa.value, HR = u.uHR.value, HM = u.uHM.value, bR = u.uBetaR.value, bM = u.uBetaM.value * 1.1;
+  const sun = u.uSun.value;
+  const a = raySphere(cam, dir, Ra);
+  const t0 = Math.max(a[0], 0);
+  let t1 = a[1];
+  const p = raySphere(cam, dir, R);
+  if (p[0] > 0) t1 = Math.min(t1, p[0]);
+  if (t1 <= t0) return out.setRGB(0, 0, 0);
+  const seg = (t1 - t0) / steps;
+  let sr = 0, sg = 0, sb = 0, mr = 0, mg = 0, mb = 0, odR = 0, odM = 0;
+  for (let i = 0; i < steps; i++) {
+    _q.copy(cam).addScaledVector(dir, t0 + seg * (i + 0.5));
+    const h = Math.max(_q.length() - R, 0);
+    const dR = Math.exp(-h / HR) * seg, dM = Math.exp(-h / HM) * seg;
+    odR += dR; odM += dM;
+    const ls = raySphere(_q, sun, Ra);
+    const lseg = Math.max(ls[1], 0) / lsteps;
+    let lR = 0, lM = 0, shadow = false;
+    for (let j = 0; j < lsteps; j++) {
+      _lq.copy(_q).addScaledVector(sun, lseg * (j + 0.5));
+      const lh = _lq.length() - R;
+      if (lh < 0) { shadow = true; break; }
+      lR += Math.exp(-lh / HR) * lseg; lM += Math.exp(-lh / HM) * lseg;
+    }
+    if (shadow) continue;
+    const tR = odR + lR, tM = (odM + lM) * bM;
+    const ar = Math.exp(-(bR.x * tR + tM)), ag = Math.exp(-(bR.y * tR + tM)), ab = Math.exp(-(bR.z * tR + tM));
+    sr += ar * dR; sg += ag * dR; sb += ab * dR;
+    mr += ar * dM; mg += ag * dM; mb += ab * dM;
+  }
+  const mu = dir.dot(sun);
+  const phaseR = 0.0597 * (1 + mu * mu);
+  const g = 0.78;
+  const phaseM = 0.1194 * ((1 - g * g) * (1 + mu * mu)) / ((2 + g * g) * Math.pow(1 + g * g - 2 * g * mu, 1.5));
+  const I = u.uSunI.value, m = u.uBetaM.value * phaseM;
+  return out.setRGB(I * (sr * bR.x * phaseR + mr * m), I * (sg * bR.y * phaseR + mg * m), I * (sb * bR.z * phaseR + mb * m));
 }
 
 export function createCloudMaterial({ color = [1, 1, 1], octaves = 3, coverage = 0.5 }) {
@@ -393,3 +473,34 @@ export function createFieldMaterial() {
     side: THREE.DoubleSide,
   });
 }
+
+// Final colour grade in display space: filmic contrast, saturation, warm
+// highlights / cool shadows, vignette and fine grain.
+export const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uRes: { value: new THREE.Vector2(1, 1) },
+    uVignette: { value: 0.28 },
+    uSaturation: { value: 1.14 },
+    uContrast: { value: 0.22 },
+    uGrain: { value: 0.016 },
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes;
+    uniform float uVignette; uniform float uSaturation; uniform float uContrast; uniform float uGrain;
+    varying vec2 vUv;
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      c = mix(c, c * c * (3.0 - 2.0 * c), uContrast);
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, uSaturation);
+      c += vec3(0.028, 0.014, -0.02) * smoothstep(0.45, 1.0, l) + vec3(-0.012, 0.0, 0.022) * (1.0 - smoothstep(0.0, 0.35, l));
+      vec2 d = vUv - 0.5; d.x *= uRes.x / uRes.y;
+      c *= mix(1.0 - uVignette, 1.0, smoothstep(0.95, 0.3, length(d)));
+      float n = fract(sin(dot(vUv * uRes + fract(uTime) * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
+      c += (n - 0.5) * uGrain;
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    }`,
+};

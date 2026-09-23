@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { colorize, merge } from './models.js';
 import { createFieldMaterial, createExhaustMaterial } from './shaders.js';
-import { texture } from './textures.js';
+import { texture, applyHullDetail } from './textures.js';
 import { staticInstance, SHIP_MODEL } from './modelLib.js';
 
 export const INTERIOR = { minX: -3.2, maxX: 3.2, minZ: -10.8, maxZ: 10.8, height: 2.8 };
@@ -287,12 +287,16 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   if (shell) {
     for (const o of legacyHull) o.visible = false;
     shell.position.copy(SHIP_SHELL.offset);
+    const unit = 1 / shell.children[0].scale.x; // metres -> model units
     shell.traverse((o) => {
       if (!o.isMesh) return;
       o.material = o.material.clone();
-      o.material.metalness = 0.35;
-      o.material.roughness = 0.45;
-      o.material.envMapIntensity = 1.4;
+      o.material.metalness = 0.45;
+      o.material.roughness = 0.38;
+      o.material.envMapIntensity = 1.6;
+      applyHullDetail(o.material, { tile: 2.6 * unit, strength: 0.75 });
+      o.castShadow = true;
+      o.receiveShadow = true;
     });
     exterior.add(shell);
   }
@@ -513,7 +517,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   ];
 
   return {
-    root, exterior, interior, shell, flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
+    root, exterior, interior, shell, legacyHull: shell ? legacyHull : [], flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
     nitro: { panel, doorPivot, canister, open: false, openT: 0 },
     cockpitEye: new THREE.Vector3(0, 1.62, -9.1),
     materials: [hullMat, canopyMat, glowMat, flameMat, gearMat, intMat, stripMat, windowMat, screenMat, coreMat],

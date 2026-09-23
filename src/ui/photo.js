@@ -18,6 +18,7 @@ export class PhotoMode {
     if (on === this.active) return;
     this.active = on;
     const cam = g.camera;
+    if (g.player?.fpArms) g.player.fpArms.visible = !on && g.cameraMode !== 'third';
     if (on) {
       // Detach the camera into the current frame so the planet can keep turning.
       const frame = g.player.mode === 'body' ? g.player.body.spin : g.ship.root.parent || g.scene;

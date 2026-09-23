@@ -14,12 +14,15 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 const vp = process.env.MOBILE ? { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1280, height: 720 } };
 const page = await browser.newPage(vp);
 await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', async (route) => { const rel = route.request().url().split('three@0.170.0/')[1]; try { route.fulfill({ body: await readFile(join(ROOT, 'node_modules/three', rel)), contentType: 'text/javascript' }); } catch { route.abort(); } });
-await page.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
-await page.route('https://fonts.gstatic.com/**', (r) => r.abort());
-// MODELS_TXT=<dir>: simulate a host that only serves base64 .glb.txt models.
-if (process.env.MODELS_TXT) {
+if (!process.env.FONTS) {
+  await page.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
+  await page.route('https://fonts.gstatic.com/**', (r) => r.abort());
+}
+// MODELS_BUNDLE=<dir>: simulate a host that refuses .glb and serves the
+// base64 bundles from tools/pack-models-bundle.mjs instead.
+if (process.env.MODELS_BUNDLE) {
   await page.route(/\.glb$/, (r) => r.fulfill({ status: 404, body: '' }));
-  await page.route(/\.glb\.txt$/, async (r) => { const n = r.request().url().split('/').pop(); try { r.fulfill({ body: await readFile(join(process.env.MODELS_TXT, n)), contentType: 'text/plain' }); } catch { r.fulfill({ status: 404, body: '' }); } });
+  await page.route(/\/assets\/models\/models[-0-9]*\.json$/, async (r) => { const n = r.request().url().split('/').pop(); try { r.fulfill({ body: await readFile(join(process.env.MODELS_BUNDLE, n)), contentType: 'application/json' }); } catch { r.fulfill({ status: 404, body: '' }); } });
 }
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); if (m.text().startsWith('DBG')) console.log(m.text()); });
@@ -35,7 +38,7 @@ for (let i = 0; i < scenes.length; i += 3) {
   const r = await page.evaluate(code);
   if (r !== undefined) console.log(name, JSON.stringify(r));
   await page.waitForTimeout(wait);
-  await page.screenshot({ path: `${OUT}/dbg-${name}.png` });
+  await page.screenshot({ path: `${OUT}/dbg-${name}.png`, timeout: 120000 });
 }
 console.log('errors:', [...new Set(errors)].slice(0, 10).join('\n'));
 await browser.close();

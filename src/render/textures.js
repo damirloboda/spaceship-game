@@ -159,3 +159,45 @@ export function applyTerrainDetail(material, { strength = 1, tile = 3.2 } = {}) 
   };
   material.customProgramCacheKey = () => 'terrain-detail';
 }
+
+// Triplanar panel detail for hand-made hulls whose UVs point into a colour
+// atlas: object-space normal map plus a touch of grime from the hull albedo.
+export function applyHullDetail(material, { tile = 2.5, strength = 0.8 } = {}) {
+  const uniforms = {
+    uHullNor: { value: texture('hull_nor.jpg') },
+    uHullDiff: { value: texture('hull_diff.jpg', { srgb: true }) },
+    uHullTile: { value: tile },
+    uHullStrength: { value: strength },
+  };
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vHullPos;\nvarying vec3 vHullN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHullPos = position;\nvHullN = normal;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D uHullNor; uniform sampler2D uHullDiff; uniform float uHullTile; uniform float uHullStrength;
+        uniform mat3 normalMatrix;
+        varying vec3 vHullPos; varying vec3 vHullN;`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        vec3 hN = normalize(vHullN);
+        vec3 hW = pow(abs(hN), vec3(6.0)); hW /= dot(hW, vec3(1.0));
+        vec3 hP = vHullPos / uHullTile;
+        float grime = dot(texture2D(uHullDiff, hP.zy).rgb * hW.x + texture2D(uHullDiff, hP.xz).rgb * hW.y + texture2D(uHullDiff, hP.xy).rgb * hW.z, vec3(0.333));
+        diffuseColor.rgb *= mix(1.0, clamp(grime * 1.25, 0.6, 1.15), 0.55 * uHullStrength);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec3 tx = texture2D(uHullNor, hP.zy).xyz * 2.0 - 1.0;
+          vec3 ty = texture2D(uHullNor, hP.xz).xyz * 2.0 - 1.0;
+          vec3 tz = texture2D(uHullNor, hP.xy).xyz * 2.0 - 1.0;
+          vec3 s = sign(hN);
+          tx.x *= s.x; ty.x *= s.y; tz.x *= -s.z;
+          tx = vec3(tx.xy + hN.zy, abs(tx.z) * hN.x);
+          ty = vec3(ty.xy + hN.xz, abs(ty.z) * hN.y);
+          tz = vec3(tz.xy + hN.xy, abs(tz.z) * hN.z);
+          vec3 dn = normalize(tx.zyx * hW.x + ty.xzy * hW.y + tz.xyz * hW.z);
+          normal = normalize(normalMatrix * normalize(mix(hN, dn, uHullStrength)));
+        }`);
+  };
+  material.customProgramCacheKey = () => 'hull-detail';
+}

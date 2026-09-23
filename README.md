@@ -76,6 +76,11 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   damage and repair, fuel, power distribution, Nitro/Overdrive, Lightbreak
   (in-system cruise and interstellar jumps), autopilot, auto/emergency landing,
   docking at the orbital station.
+- **Sky & grading**: physically based Rayleigh/Mie sky (blue zenith, bright
+  horizon, sun disc, orange sunsets, alien-tinted skies); fog takes the sky
+  colour in the view direction; filmic colour grade with vignette and grain.
+- **Grass**: tens of thousands of wind-animated grass clumps around the player,
+  coloured by biome.
 - **Graphics**: photo-scanned CC0 textures (Poly Haven) blended triplanar over
   procedural biomes with normal mapping, image-based lighting (reflections of
   the sky or the galaxy), animated ocean waves with foam, a hand-made fighter
@@ -111,6 +116,17 @@ npm run test:e2e     # headless Chromium: full slice walkthrough with screenshot
 node tests/e2e/gameplay.mjs   # real keyboard input: walk, scan, mine, buy, fly, install Nitro, take off, save/load
 ```
 
+## Model tools
+
+```bash
+node tools/convert-models.mjs <srcDir> <outDir> <names>   # Quaternius FBX -> GLB (colour/texture fixes)
+node tools/preview-models.mjs out.png <names>             # contact sheet (SIDE=1 side view, ANIM=1 posed)
+node tools/pack-models-bundle.mjs <outDir> [chunkMB]      # base64 bundles for hosts that refuse .glb
+```
+
+The loader tries `assets/models/<name>.glb` first and falls back to
+`assets/models/models.json` bundles when `.glb` files are not served.
+
 ## Project layout
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -119,6 +135,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Textures in `assets/textures` are derived from [Poly Haven](https://polyhaven.com) assets (CC0).
 Models in `assets/models` (ship, astronauts, trees, animals, monsters, fish) are by
-[Quaternius](https://quaternius.com) (CC0) — see `assets/models/LICENSE.md`. If a model
+[Quaternius](https://quaternius.com) (CC0); photoscanned plants and rocks (`ph_*`) are
+from [Poly Haven](https://polyhaven.com) (CC0) — see `assets/models/LICENSE.md`. If a model
 fails to load the game falls back to its procedural geometry. Sounds and shaders are
 generated in code.

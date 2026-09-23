@@ -131,7 +131,7 @@ export class Menus {
       h('label', {}, t('creator.visor')), swatches(VISOR_COLORS, 'visor'),
       h('label', {}, t('creator.build')),
       h('div', { class: 'seg' }, ['compact', 'standard', 'tall'].map((b) => h('button', { class: d.build === b ? 'on' : '', onclick: () => { d.build = b; this.refresh(); } }, t(`creator.build_${b}`)))),
-      h('div', { class: 'preview', style: { '--suit': d.suit, '--visor': d.visor } }, h('div', { class: 'astro' }, h('i'))),
+      h('div', { class: 'preview', style: { '--suit': d.suit, '--visor': d.visor } }, h('img', { class: 'portrait', src: `assets/ui/char-${d.character}.jpg`, alt: '' })),
       h('p', { class: 'muted' }, t('creator.intro')),
       this.btn('creator.begin', () => {
         const name = (d.name || '').trim() || t('creator.default_name');

@@ -53,16 +53,16 @@ try {
 await page.goto(`http://localhost:${port}/?dev=1`);
 await page.waitForFunction(() => window.__game && document.querySelector('.title-screen'), null, { timeout: 60000 });
 await page.waitForTimeout(1500);
-await page.screenshot({ path: `${OUT}/01-title.png` });
+await page.screenshot({ path: `${OUT}/01-title.png`, timeout: 120000 });
 await page.click('text=New game');
 await page.waitForSelector('.panel');
-await page.screenshot({ path: `${OUT}/02-creator.png` });
+await page.screenshot({ path: `${OUT}/02-creator.png`, timeout: 120000 });
 await page.click('text=Begin expedition');
 const t0 = Date.now();
 await page.waitForFunction(() => window.__game.state && window.__game.mode === 'foot', null, { timeout: 120000 });
 console.log('game started in', Date.now() - t0, 'ms');
 await page.waitForTimeout(4000);
-await page.screenshot({ path: `${OUT}/03-surface.png` });
+await page.screenshot({ path: `${OUT}/03-surface.png`, timeout: 120000 });
 const info = await page.evaluate(() => {
   const g = window.__game;
   const b = g.player.body;
@@ -76,7 +76,7 @@ console.log(JSON.stringify(info));
 const shot = async (name, fn, wait = 2500) => {
   await page.evaluate(fn);
   await page.waitForTimeout(wait);
-  await page.screenshot({ path: `${OUT}/${name}.png` });
+  await page.screenshot({ path: `${OUT}/${name}.png`, timeout: 120000 });
   const st = await page.evaluate(() => ({ mode: window.__game.mode, fps: Math.round(window.__game.fps), speed: Math.round(window.__game.ship.speed), alt: Math.round(window.__game.ship.altitude), lb: window.__game.ship.lb.phase, sys: window.__game.universe.system.name }));
   console.log(name, JSON.stringify(st));
 };
@@ -88,7 +88,7 @@ if (!steps.includes('quick')) {
   await shot('08-techbay-menu', () => { const g = window.__game; g.ship.model.nitro.open = true; g.menus.open('techbay'); }, 800);
   await page.click('text=Install Nitro');
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${OUT}/09-nitro-installed.png` });
+  await page.screenshot({ path: `${OUT}/09-nitro-installed.png`, timeout: 120000 });
   await shot('10-cockpit', () => { const g = window.__game; g.menus.closeAll(); g.sitInPilotSeat(); });
   await shot('11-takeoff', () => { const g = window.__game; g.ship.takeoff(); g.ship.throttle = 0.6; g.ship.root.quaternion.multiply(new (g.ship.root.quaternion.constructor)().setFromAxisAngle(new (g.player.forward.constructor)(1, 0, 0), 0.5)); }, 5000);
   await shot('12-orbit', () => { const g = window.__game; const b = g.homeBody(); const up = b.ship ? null : g.ship.root.position.clone().normalize(); g.ship.root.position.copy(up.multiplyScalar(b.atmoTop + 9000)); g.ship.vel.set(0, 0, 0); g.ship.throttle = 0; g.cameraMode = 'third'; g.updateCameraParent(); }, 3000);
@@ -101,7 +101,7 @@ console.log('ERRORS:\n' + [...new Set(errors)].slice(0, 30).join('\n'));
 } catch (e) {
   console.log('FAILED:', e.message);
   console.log('ERRORS:\n' + [...new Set(errors)].slice(0, 20).join('\n'));
-  try { await page.screenshot({ path: `${OUT}/fail.png` }); } catch { /* ignore */ }
+  try { await page.screenshot({ path: `${OUT}/fail.png`, timeout: 120000 }); } catch { /* ignore */ }
   process.exitCode = 1;
 }
 await browser.close();

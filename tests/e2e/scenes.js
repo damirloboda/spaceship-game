@@ -27,3 +27,19 @@ window.__scenes = {
     return out;
   },
 };
+// Look at the home planet from high orbit (camera detached in photo mode).
+window.__scenes.orbit = (alt = 2.2) => {
+  const g = window.__game;
+  g.photo.toggle(true);
+  const b = g.player.body, cam = g.camera;
+  const up = g.player.pos.clone().normalize();
+  const side = up.clone().cross(new cam.position.constructor(0, 1, 0)).normalize();
+  cam.position.copy(up).multiplyScalar(b.radius * alt).addScaledVector(side, b.radius * 0.8);
+  cam.up.copy(up.clone().transformDirection(b.spin.matrixWorld));
+  b.spin.updateMatrixWorld(true);
+  cam.updateMatrixWorld(true);
+  cam.lookAt(b.spin.getWorldPosition(new cam.position.constructor()));
+  g.photo.update = () => {};
+  document.querySelector('.photo')?.remove();
+  return { r: b.radius };
+};
