@@ -1,0 +1,539 @@
+// Plants and resource deposits scattered over terrain chunks. Placement is
+// deterministic per chunk (same planet = same forest). Rendered with one
+// InstancedMesh per species, rebuilt only when the set of chunks changes.
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RNG, hashMix, hashString } from '../core/rng.js';
+import { floraModelFor, staticParts, modelHeight, modelLod, modelCull } from './modelLib.js';
+import { cubeToSphere } from './terrain.js';
+import { plantGeometry, depositGeometry, DEPOSIT_TYPES } from './models.js';
+
+const UP = new THREE.Vector3(0, 1, 0);
+
+const DEPOSIT_WEIGHTS = {
+  terran: { ferrite: 4, carbon: 4, cobalt: 2, oxyite: 1.5, aurum: 0.3 },
+  ocean: { ferrite: 3, carbon: 3, cobalt: 2, oxyite: 2, aurum: 0.3 },
+  desert: { ferrite: 5, cobalt: 1.5, aurum: 0.8, oxyite: 0.5 },
+  ice: { ice: 5, ferrite: 2, cobalt: 2, aurum: 0.4 },
+  lava: { ferrite: 3, oxyite: 3, aurum: 1 },
+  crystal: { cobalt: 4, aurum: 1.2, ferrite: 2 },
+  barren: { ferrite: 4, ice: 1, cobalt: 1.5, aurum: 0.6 },
+  default: { ferrite: 4, carbon: 2, cobalt: 1.5, oxyite: 1, aurum: 0.4 },
+};
+
+// How lush groves get per biome (0 = none).
+const GROVE_BIOMES = { forest: 1.4, grassland: 0.8, savanna: 0.5, wetland: 0.7, tundra: 0.35, fungal: 1.2, sporefield: 0.8, glowmoss: 0.9, mire: 0.6 };
+const BARE_BIOMES = new Set(['seabed', 'beach', 'snow', 'glacier', 'lavafield', 'cloudtop']);
+
+export class Scatter {
+  constructor(body, { flora, density = 1, isMined = () => false }) {
+    this.body = body;
+    this.surface = body.surface;
+    this.density = density;
+    this.isMined = isMined;
+    this.group = new THREE.Group();
+    this.group.name = 'scatter';
+    this.time = { value: 0 };
+    const R = this.surface.radius;
+    const faceArc = (Math.PI / 2) * R;
+    this.floraLevel = Math.max(2, Math.round(Math.log2(faceArc / 600)));
+    this.depositLevel = this.floraLevel + 1;
+    this.chunks = new Map();
+    this.pending = [];
+    this.dirty = false;
+    this.rebuildTimer = 0;
+    const wantBiomes = ['grassland', 'forest', 'savanna', 'wetland', 'tundra', 'desert', 'dunes', 'mesa', 'ice', 'snow', 'rock', 'fungal', 'sporefield', 'mire', 'toxicflat', 'crystal', 'glowmoss', 'regolith', 'basalt', 'ash', 'irradiated', 'storm'];
+    // Decorative boulders (not scannable) so every world has some detail.
+    const rrng = new RNG(hashMix(body.def.seed, 'rocks'));
+    const rocks = [0, 1, 2].map((i) => ({
+      id: `${body.def.id}/rock${i}`, form: 'rock', decor: true, height: rrng.range(0.9, 3.2), leaf: [0.5, 0.5, 0.5], glow: 0,
+      density: rrng.range(0.25, 0.5), collider: 0.7,
+    }));
+    const hasRockModels = rocks.some((r) => floraModelFor(body.def.type, 'rock', new RNG(1)));
+    this.species = [...flora, ...(hasRockModels ? rocks : [])].map((sp, i) => {
+      const r = new RNG(hashMix(body.def.seed, sp.id));
+      // Each species prefers a few biomes; forests are denser.
+      const pref = new Set(r.shuffle(wantBiomes.slice()).slice(0, 7));
+      if (['conifer', 'broadleaf'].includes(sp.form)) pref.add('forest');
+      if (sp.form === 'cactus') { pref.add('desert'); pref.add('dunes'); }
+      if (sp.form === 'mushroom') { pref.add('fungal'); pref.add('glowmoss'); }
+      if (sp.form === 'crystal') { pref.add('crystal'); pref.add('ice'); }
+      if (sp.form === 'reed') { pref.add('wetland'); pref.add('mire'); }
+      if (sp.form === 'rock') for (const b of ['rock', 'mesa', 'tundra', 'regolith', 'basalt', 'ash', 'beach', 'snow', 'glacier', 'lavafield']) pref.add(b);
+      const cap = Math.floor(2600 * density);
+      const modelName = floraModelFor(body.def.type, sp.form, new RNG(hashString(sp.id)));
+      const parts = modelName ? staticParts(modelName) : null;
+      let meshes;
+      if (parts?.length) {
+        // Hand-made model: one instanced mesh per material, sharing matrices.
+        meshes = parts.map((part) => {
+          const mat = part.material.clone();
+          if (sp.glow) { mat.emissive = new THREE.Color(sp.leaf[0], sp.leaf[1], sp.leaf[2]).multiplyScalar(sp.glow * 0.35); }
+          if (sp.form !== 'rock' && !modelName.startsWith('ph_boulder') && !modelName.startsWith('ph_rock') && !modelName.startsWith('ph_namaqualand')) this.addSway(mat, 1);
+          return new THREE.InstancedMesh(part.geometry, mat, cap);
+        });
+        for (const m of meshes.slice(1)) m.instanceMatrix = meshes[0].instanceMatrix;
+        // Per-instance tint so a forest of one model does not look cloned.
+        const tint = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+        for (const m of meshes) m.instanceColor = tint;
+      } else {
+        const geo = plantGeometry(sp);
+        const mat = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: sp.form === 'crystal' ? 0.25 : 0.85,
+          metalness: sp.form === 'crystal' ? 0.3 : 0,
+          emissive: sp.glow ? new THREE.Color(sp.leaf[0], sp.leaf[1], sp.leaf[2]).multiplyScalar(sp.glow * 0.6) : new THREE.Color(0),
+          flatShading: true,
+        });
+        this.addSway(mat, sp.height);
+        meshes = [new THREE.InstancedMesh(geo, mat, cap)];
+      }
+      for (const mesh of meshes) {
+        mesh.count = 0;
+        mesh.frustumCulled = false;
+        mesh.castShadow = sp.height > 3;
+        mesh.receiveShadow = true;
+        this.group.add(mesh);
+      }
+      const mesh = meshes[0];
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      // Simplified copy for distant instances, sharing the near materials.
+      let lodMeshes = null, lodDist = Infinity;
+      const lod = parts?.length ? modelLod(modelName) : null;
+      const lodParts = lod ? staticParts(lod.lod) : null;
+      if (lodParts?.length) {
+        lodMeshes = lodParts.map((lp, k) => {
+          // Reuse the near material with the same name (same colours, sway).
+          const near = meshes.find((m) => m.material.name && m.material.name === lp.material.name) || meshes[k] || meshes[0];
+          return new THREE.InstancedMesh(lp.geometry, near.material, cap);
+        });
+        for (const m of lodMeshes.slice(1)) m.instanceMatrix = lodMeshes[0].instanceMatrix;
+        const lodTint = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+        for (const m of lodMeshes) m.instanceColor = lodTint;
+        for (const m of lodMeshes) { m.count = 0; m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; this.group.add(m); }
+        lodMeshes[0].instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        lodDist = lod.dist;
+      }
+      // Far proxy: a 30-40 triangle silhouette in the tree's own colours.
+      let farMesh = null, farDist = Infinity;
+      if (lodParts?.length && ['conifer', 'broadleaf', 'palm', 'mushroom'].includes(sp.form)) {
+        const geo = treeProxyGeometry(sp.form, lodParts);
+        if (geo) {
+          farMesh = new THREE.InstancedMesh(geo, proxyMaterial(), cap);
+          farMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+          farMesh.count = 0; farMesh.frustumCulled = false; farMesh.castShadow = false; farMesh.receiveShadow = true;
+          farMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          this.group.add(farMesh);
+          farDist = 300 + 250 * density;
+        }
+      }
+      const cullDist = parts?.length ? modelCull(modelName) : 0;
+      // Models are 1 unit tall: instance scale carries the species height.
+      const unitScale = parts?.length ? (modelHeight(modelName) ?? sp.height) : 1;
+      return { def: sp, pref, mesh, meshes, lodMeshes, lodDist, farMesh, farDist, cullDist, cap, index: i, unitScale, model: parts?.length ? modelName : null };
+    });
+    const weights = DEPOSIT_WEIGHTS[body.def.type] || DEPOSIT_WEIGHTS.default;
+    this.depositWeights = Object.entries(weights).map(([v, w]) => ({ v, w }));
+    this.depositMeshes = {};
+    for (const type of Object.keys(DEPOSIT_TYPES)) {
+      const d = DEPOSIT_TYPES[type];
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: d.shape === 'crystal' ? 0.2 : 0.9, metalness: d.shape === 'crystal' ? 0.4 : 0.1, flatShading: true,
+        emissive: new THREE.Color(d.color[0], d.color[1], d.color[2]).multiplyScalar(d.glow * 0.5),
+      });
+      const mesh = new THREE.InstancedMesh(depositGeometry(type), mat, 600);
+      mesh.count = 0;
+      mesh.frustumCulled = false;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.group.add(mesh);
+      this.depositMeshes[type] = mesh;
+    }
+    this.activeDeposits = [];
+    this.maxDistance = 1300 * Math.sqrt(density);
+    this.lastFocus = new THREE.Vector3(Infinity, 0, 0);
+  }
+
+  addSway(mat, height) {
+    const time = this.time;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = time;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            float ph = instanceMatrix[3].x * 0.13 + instanceMatrix[3].z * 0.07;
+          #else
+            float ph = 0.0;
+          #endif
+          float sway = sin(uTime * 1.6 + ph) * 0.04 * max(position.y, 0.0) / ${Math.max(1, height).toFixed(1)};
+          transformed.x += sway * position.y;
+          transformed.z += sway * 0.6 * position.y;`);
+    };
+  }
+
+  // Species that form groves: the tall ones (trees, palms, giant fungi).
+  treeSpecies() {
+    if (!this._trees) this._trees = this.species.filter((sp) => !sp.def.decor && ['conifer', 'broadleaf', 'palm', 'mushroom'].includes(sp.def.form) && sp.def.height > 3);
+    return this._trees;
+  }
+
+  paved(d) {
+    const R = this.surface.radius;
+    for (const z of this.surface.flatZones || []) {
+      if (z.radius < 40 && !z.clear) continue;
+      const c = d[0] * z.x + d[1] * z.y + d[2] * z.z;
+      if (Math.acos(Math.min(1, c)) * R < z.radius * 0.92) return true;
+    }
+    return false;
+  }
+
+  onNodeCreate(node) {
+    if (node.level === this.floraLevel || node.level === this.depositLevel) this.pending.push(node);
+  }
+
+  onNodeDispose(node) {
+    if (this.chunks.delete(node.key)) this.dirty = true;
+    const i = this.pending.indexOf(node);
+    if (i >= 0) this.pending.splice(i, 1);
+  }
+
+  generate(node) {
+    const s = this.surface;
+    const R = s.radius;
+    const rng = new RNG(hashMix(this.body.def.seed, node.key));
+    const d = [0, 0, 0];
+    const chunk = { key: node.key, plants: [], deposits: [], center: node.center.clone() };
+    const q = new THREE.Quaternion();
+    const yaw = new THREE.Quaternion();
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    if (node.level === this.floraLevel && this.species.length) {
+      const samples = Math.floor(260 * this.density * (this.body.def.life ? 1 : 0.35));
+      for (let i = 0; i < samples; i++) {
+        cubeToSphere(node.face, node.u0 + rng.next() * node.size, node.v0 + rng.next() * node.size, d);
+        const h = s.heightAt(d[0], d[1], d[2]);
+        if (s.hasOcean && h < 1.5) continue;
+        // Nothing grows on city streets, pads or ruins.
+        if (this.paved(d)) continue;
+        const biome = s.biomeAt(d[0], d[1], d[2], h, 0);
+        if (BARE_BIOMES.has(biome) && rng.next() > 0.15) continue;
+        const cands = this.species.filter((sp) => sp.pref.has(biome));
+        if (!cands.length) continue;
+        const sp = rng.weighted(cands.map((c) => ({ v: c, w: c.def.density * (biome === 'forest' ? 2 : 1) })));
+        if (rng.next() > 0.35 + sp.def.density * 0.6) continue;
+        dir.set(d[0], d[1], d[2]);
+        pos.copy(dir).multiplyScalar(R + h - 0.2);
+        q.setFromUnitVectors(UP, dir);
+        yaw.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
+        q.multiply(yaw);
+        const sc = 0.7 + rng.next() * 0.6;
+        const us = sc * sp.unitScale;
+        scale.set(us, us * (0.9 + rng.next() * 0.2), us);
+        m.compose(pos, q, scale);
+        const tv = 0.85 + rng.next() * 0.3, warm = (rng.next() - 0.5) * 0.16;
+        chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc, tint: [tv * (1 + warm), tv, tv * (1 - warm)] });
+      }
+    }
+    // Groves: trees grow in clusters, so forests read as forests and single
+    // trees stand in the open between them.
+    if (node.level === this.floraLevel && this.treeSpecies().length && this.body.def.life) {
+      const groves = Math.round((9 + rng.next() * 8) * this.density);
+      for (let gi = 0; gi < groves; gi++) {
+        cubeToSphere(node.face, node.u0 + rng.next() * node.size, node.v0 + rng.next() * node.size, d);
+        const h0 = s.heightAt(d[0], d[1], d[2]);
+        if (s.hasOcean && h0 < 3) continue;
+        if (this.paved(d)) continue;
+        const biome = s.biomeAt(d[0], d[1], d[2], h0, 0);
+        const lush = GROVE_BIOMES[biome];
+        if (!lush) continue;
+        const cands = this.treeSpecies().filter((sp) => sp.pref.has(biome) || biome === 'forest');
+        if (!cands.length) continue;
+        // One or two species per grove.
+        const sps = [rng.pick(cands), rng.pick(cands)];
+        const n = Math.round((10 + rng.next() * 22) * lush);
+        const radius = 22 + rng.next() * 50;
+        const c0 = new THREE.Vector3(d[0], d[1], d[2]);
+        const t1 = new THREE.Vector3(0, 1, 0).cross(c0);
+        if (t1.lengthSq() < 1e-6) t1.set(1, 0, 0);
+        t1.normalize();
+        const t2 = c0.clone().cross(t1);
+        for (let k = 0; k < n; k++) {
+          const sp = sps[k % 2];
+          const a = rng.next() * Math.PI * 2, rr = Math.sqrt(rng.next()) * radius;
+          dir.copy(c0).addScaledVector(t1, (Math.cos(a) * rr) / R).addScaledVector(t2, (Math.sin(a) * rr) / R).normalize();
+          const h = s.heightAt(dir.x, dir.y, dir.z);
+          if (s.hasOcean && h < 1.5) continue;
+          d[0] = dir.x; d[1] = dir.y; d[2] = dir.z;
+          if (this.paved(d)) continue;
+          pos.copy(dir).multiplyScalar(R + h - 0.25);
+          q.setFromUnitVectors(UP, dir);
+          yaw.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
+          q.multiply(yaw);
+          // Big old trees in the middle, saplings at the edge.
+          const sc = (0.65 + rng.next() * 0.55) * (1.15 - (rr / radius) * 0.35);
+          const us = sc * sp.unitScale;
+          scale.set(us, us * (0.9 + rng.next() * 0.25), us);
+          m.compose(pos, q, scale);
+          const tv = 0.82 + rng.next() * 0.3, warm = (rng.next() - 0.5) * 0.18;
+          chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc, tint: [tv * (1 + warm), tv, tv * (1 - warm)] });
+        }
+      }
+    }
+    if (node.level === this.depositLevel) {
+      const n = 4 + Math.floor(rng.next() * 8);
+      for (let i = 0; i < n; i++) {
+        cubeToSphere(node.face, node.u0 + rng.next() * node.size, node.v0 + rng.next() * node.size, d);
+        const h = s.heightAt(d[0], d[1], d[2]);
+        if (s.hasOcean && h < 0.5) continue;
+        const type = rng.weighted(this.depositWeights);
+        const id = `${this.body.def.id}|${node.key}#${i}`;
+        if (this.isMined(id)) continue;
+        dir.set(d[0], d[1], d[2]);
+        pos.copy(dir).multiplyScalar(R + h - 0.1);
+        q.setFromUnitVectors(UP, dir);
+        yaw.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
+        q.multiply(yaw);
+        const sc = type === 'aurum' ? 0.8 : 0.8 + rng.next() * 0.8;
+        scale.set(sc, sc, sc);
+        m.compose(pos, q, scale);
+        chunk.deposits.push({ id, type, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), mined: false });
+      }
+    }
+    const existing = this.chunks.get(node.key);
+    if (existing) {
+      existing.plants.push(...chunk.plants);
+      existing.deposits.push(...chunk.deposits);
+    } else {
+      this.chunks.set(node.key, chunk);
+    }
+    this.dirty = true;
+  }
+
+  rebuild() {
+    const counts = this.species.map(() => 0);
+    const lodCounts = this.species.map(() => 0);
+    const farCounts = this.species.map(() => 0);
+    const dcounts = {};
+    for (const t of Object.keys(this.depositMeshes)) dcounts[t] = 0;
+    this.activeDeposits = [];
+    const far2 = (this.maxDistance + 400) ** 2;
+    const focus = this.lastFocus;
+    for (const chunk of this.chunks.values()) {
+      // Distant vegetation is dropped entirely: it is sub-pixel anyway.
+      if (Number.isFinite(focus.x) && chunk.center.distanceToSquared(focus) > far2) {
+        for (const dep of chunk.deposits) if (!dep.mined) this.activeDeposits.push(dep);
+        continue;
+      }
+      const known = Number.isFinite(focus.x);
+      for (const p of chunk.plants) {
+        const sp = this.species[p.sp];
+        const d = known ? p.pos.distanceTo(focus) : 0;
+        if (sp.cullDist && d > sp.cullDist) continue;
+        if (sp.farMesh && d > sp.farDist) {
+          const c = farCounts[p.sp];
+          if (c >= sp.cap) continue;
+          sp.farMesh.instanceMatrix.array.set(p.matrix, c * 16);
+          sp.farMesh.instanceColor.array.set(p.tint, c * 3);
+          farCounts[p.sp] = c + 1;
+          continue;
+        }
+        if (sp.lodMeshes && d > sp.lodDist) {
+          const c = lodCounts[p.sp];
+          if (c >= sp.cap) continue;
+          sp.lodMeshes[0].instanceMatrix.array.set(p.matrix, c * 16);
+          sp.lodMeshes[0].instanceColor?.array.set(p.tint, c * 3);
+          lodCounts[p.sp] = c + 1;
+          continue;
+        }
+        const c = counts[p.sp];
+        if (c >= sp.cap) continue;
+        sp.mesh.instanceMatrix.array.set(p.matrix, c * 16);
+        if (sp.model) sp.mesh.instanceColor.array.set(p.tint, c * 3);
+        counts[p.sp] = c + 1;
+      }
+      for (const dep of chunk.deposits) {
+        if (dep.mined) continue;
+        const mesh = this.depositMeshes[dep.type];
+        const c = dcounts[dep.type];
+        if (c >= 600) continue;
+        mesh.instanceMatrix.array.set(dep.matrix, c * 16);
+        dcounts[dep.type] = c + 1;
+        this.activeDeposits.push(dep);
+      }
+    }
+    this.species.forEach((sp, i) => {
+      for (const m of sp.meshes) m.count = counts[i];
+      sp.mesh.instanceMatrix.needsUpdate = true;
+      if (sp.mesh.instanceColor) sp.mesh.instanceColor.needsUpdate = true;
+      if (sp.farMesh) {
+        sp.farMesh.count = farCounts[i];
+        sp.farMesh.instanceMatrix.needsUpdate = true;
+        sp.farMesh.instanceColor.needsUpdate = true;
+      }
+      if (sp.lodMeshes) {
+        for (const m of sp.lodMeshes) m.count = lodCounts[i];
+        sp.lodMeshes[0].instanceMatrix.needsUpdate = true;
+        sp.lodMeshes[0].instanceColor.needsUpdate = true;
+      }
+    });
+    for (const [t, mesh] of Object.entries(this.depositMeshes)) {
+      mesh.count = dcounts[t];
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    this.dirty = false;
+  }
+
+  update(dt, budgetMs = 2, focus = null) {
+    this.time.value += dt;
+    if (focus && focus.distanceToSquared(this.lastFocus) > 40 * 40) {
+      this.lastFocus.copy(focus);
+      this.dirty = true;
+    }
+    if (this.pending.length) {
+      const t0 = performance.now();
+      while (this.pending.length && performance.now() - t0 < budgetMs) {
+        const node = this.pending.shift();
+        if (!node.disposed) this.generate(node);
+      }
+    }
+    this.rebuildTimer -= dt;
+    if (this.dirty && this.rebuildTimer <= 0) {
+      this.rebuild();
+      this.rebuildTimer = 0.3;
+    }
+  }
+
+  flush() {
+    while (this.pending.length) {
+      const node = this.pending.shift();
+      if (!node.disposed) this.generate(node);
+    }
+    this.rebuild();
+  }
+
+  // Deposit closest to `origin` within `maxDist`, preferring the aim direction.
+  findDeposit(origin, forward, maxDist = 7) {
+    let best = null, bestScore = Infinity;
+    const v = new THREE.Vector3();
+    for (const dep of this.activeDeposits) {
+      v.subVectors(dep.pos, origin);
+      const dist = v.length();
+      if (dist > maxDist) continue;
+      const aim = forward ? 1 - v.normalize().dot(forward) : 0;
+      const score = dist * 0.3 + aim * 6;
+      if (score < bestScore) { bestScore = score; best = dep; }
+    }
+    return best;
+  }
+
+  removeDeposit(dep) {
+    dep.mined = true;
+    this.dirty = true;
+    this.rebuildTimer = 0;
+  }
+
+  plantsNear(origin, radius) {
+    const out = [];
+    const r2 = radius * radius;
+    for (const chunk of this.chunks.values()) {
+      for (const p of chunk.plants) {
+        if (this.species[p.sp].def.decor) continue;
+        if (p.pos.distanceToSquared(origin) < r2) out.push({ species: this.species[p.sp].def, pos: p.pos });
+      }
+    }
+    return out;
+  }
+
+  // Push a moving circle out of tree trunks (tangent plane approximation).
+  collide(pos, radius) {
+    const push = new THREE.Vector3();
+    const v = new THREE.Vector3();
+    for (const chunk of this.chunks.values()) {
+      for (const p of chunk.plants) {
+        if (!p.radius) continue;
+        const rr = p.radius + radius;
+        const dx = pos.x - p.pos.x, dy = pos.y - p.pos.y, dz = pos.z - p.pos.z;
+        if (Math.abs(dx) > rr + 20 || Math.abs(dz) > rr + 20 || Math.abs(dy) > rr + 20) continue;
+        v.set(dx, dy, dz);
+        const up = p.pos.clone().normalize();
+        const along = v.dot(up);
+        if (along < -1 || along > 12) continue;
+        v.addScaledVector(up, -along);
+        const d = v.length();
+        if (d < rr && d > 1e-4) push.addScaledVector(v, (rr - d) / d);
+      }
+    }
+    return push;
+  }
+
+  stats() {
+    let plants = 0;
+    for (const sp of this.species) plants += sp.mesh.count;
+    return { plants, deposits: this.activeDeposits.length, chunks: this.chunks.size };
+  }
+
+  dispose() {
+    for (const sp of this.species) {
+      for (const m of sp.meshes) { if (!sp.model) m.geometry.dispose(); m.material.dispose(); m.dispose(); }
+      for (const m of sp.lodMeshes || []) m.dispose();
+    }
+    for (const mesh of Object.values(this.depositMeshes)) { mesh.geometry.dispose(); mesh.material.dispose(); mesh.dispose(); }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Far-distance tree proxies: a trunk plus a crown shaped by form, sized from
+// the model's LOD bounds and coloured from its materials (vertex colours).
+let proxyMat = null;
+function proxyMaterial() {
+  if (!proxyMat) proxyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+  return proxyMat;
+}
+
+function materialColour(parts, re, fallback) {
+  const hit = parts.find((p) => re.test(p.material.name || ''));
+  if (hit?.material.color) return hit.material.color.clone();
+  return new THREE.Color(...fallback);
+}
+
+function paint(geo, c) {
+  const n = geo.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+function treeProxyGeometry(form, parts) {
+  const box = new THREE.Box3();
+  for (const p of parts) { p.geometry.computeBoundingBox(); box.union(p.geometry.boundingBox); }
+  if (box.isEmpty()) return null;
+  const size = box.getSize(new THREE.Vector3());
+  const h = box.max.y, base = box.min.y;
+  const r = Math.max(size.x, size.z) * 0.45;
+  // Leaves: the greenest material; trunk: the brownest.
+  let leaf = null, trunk = null, bestG = -1, bestB = -1;
+  for (const p of parts) {
+    const c = p.material.color;
+    // Textured (photoscanned) materials carry their colour in the map.
+    if (!c || p.material.map) continue;
+    const g = c.g - (c.r + c.b) * 0.5, b = c.r - c.b;
+    if (g > bestG) { bestG = g; leaf = c.clone(); }
+    if (b > bestB && c.r < 0.8) { bestB = b; trunk = c.clone(); }
+  }
+  leaf = leaf || materialColour(parts.filter((p) => !p.material.map), /leaf|leaves|foliage|green/i, form === 'palm' ? [0.42, 0.45, 0.22] : [0.25, 0.42, 0.18]);
+  trunk = trunk || materialColour(parts.filter((p) => !p.material.map), /trunk|wood|bark/i, form === 'palm' ? [0.55, 0.47, 0.36] : [0.33, 0.24, 0.16]);
+  // The proxy is lit flatly; brighten a touch to match the textured models.
+  leaf.multiplyScalar(0.95);
+  const trunkH = form === 'palm' ? 0.75 : form === 'conifer' ? 0.25 : 0.4;
+  const t = new THREE.CylinderGeometry(r * 0.08, r * 0.12, (h - base) * trunkH, 5, 1).translate(0, base + ((h - base) * trunkH) / 2, 0);
+  let crown;
+  if (form === 'conifer') crown = new THREE.ConeGeometry(r, (h - base) * 0.82, 7, 1).translate(0, base + (h - base) * 0.59, 0);
+  else if (form === 'palm') crown = new THREE.ConeGeometry(r, (h - base) * 0.22, 7, 1, true).rotateX(Math.PI).translate(0, base + (h - base) * 0.86, 0);
+  else crown = new THREE.IcosahedronGeometry(1, 0).scale(r, (h - base) * 0.34, r).translate(0, base + (h - base) * 0.66, 0);
+  const g1 = paint(t.toNonIndexed(), trunk), g2 = paint(crown.index ? crown.toNonIndexed() : crown, leaf);
+  for (const g of [g1, g2]) { g.deleteAttribute('uv'); }
+  return mergeGeometries([g1, g2], false);
+}
