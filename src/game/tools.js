@@ -98,6 +98,7 @@ export class Tools {
       this.addMarker({ kind: 'signal', label: t('marker.unknown_signal'), frame: body, local: body.ruin.localPos, color: '#c78bff', ttl: 120 });
       g.director.onSignalScanned(body);
     }
+    if (g.pois?.reveal(body, pos, radius * 8)) found++;
     if (!found) g.hud.toast('hud.scan_complete', 'accent');
     g.events.emit('tool:scan', { body, found });
   }

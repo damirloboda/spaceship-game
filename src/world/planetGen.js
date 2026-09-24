@@ -60,8 +60,9 @@ export class PlanetSurface {
     this.minHeight = -this.amp * 1.1;
   }
 
-  addFlatZone(dir, radius, height, falloff = radius) {
-    this.flatZones.push({ x: dir[0], y: dir[1], z: dir[2], radius, height, falloff });
+  // `clear`: nothing grows there (ruins, camps), whatever the size.
+  addFlatZone(dir, radius, height, falloff = radius, { clear = false } = {}) {
+    this.flatZones.push({ x: dir[0], y: dir[1], z: dir[2], radius, height, falloff, clear });
   }
 
   // Height above the base radius, in metres, for a unit direction.

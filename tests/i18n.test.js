@@ -7,7 +7,7 @@ import ru from '../src/i18n/ru.js';
 import tr from '../src/i18n/tr.js';
 import uk from '../src/i18n/uk.js';
 
-const PREFIXES = ['title', 'creator', 'import', 'export', 'pause', 'settings', 'ui', 'hud', 'warn', 'tut', 'prompt', 'marker', 'inv', 'map', 'shop', 'research', 'dialog', 'tech', 'repair', 'lab', 'craft', 'rest', 'galley', 'base', 'station', 'exp', 'wormhole', 'journal', 'story', 'ruin', 'help', 'photo', 'touch', 'quest', 'radio', 'news', 'anomaly'];
+const PREFIXES = ['title', 'creator', 'import', 'export', 'pause', 'settings', 'ui', 'hud', 'warn', 'tut', 'prompt', 'marker', 'inv', 'map', 'shop', 'research', 'dialog', 'tech', 'repair', 'lab', 'craft', 'rest', 'galley', 'base', 'station', 'exp', 'wormhole', 'journal', 'story', 'ruin', 'help', 'photo', 'touch', 'quest', 'radio', 'news', 'anomaly', 'poi'];
 
 function walk(dir, out = []) {
   for (const f of readdirSync(dir)) {

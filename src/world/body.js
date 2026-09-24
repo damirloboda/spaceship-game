@@ -3,6 +3,7 @@
 // clouds and rings, all living in the body's rotating frame.
 import * as THREE from 'three';
 import { PlanetSurface, tangentFrame, offsetOnSphere } from './planetGen.js';
+import { planPOIs } from './poi.js';
 import { generateFauna, generateFlora } from './lifeGen.js';
 import { Terrain } from '../render/terrain.js';
 import { Scatter } from '../render/scatter.js';
@@ -109,6 +110,16 @@ export class Body {
         s.addFlatZone(site.dir, 40, site.height, 40);
       }
     }
+    // Ruins, wrecks, outposts, camps, monoliths, fossils and crystal groves:
+    // roughly one every 5 km, the first two close to the landing area.
+    if (def.type !== 'cloud' && def.radius > 2000) {
+      const avoid = [];
+      if (this.sites.city) avoid.push({ dir: this.sites.city.dir, radius: CITY_RADIUS + 400 });
+      if (this.sites.shipPad) avoid.push({ dir: this.sites.shipPad.dir, radius: 300 });
+      if (this.sites.ruin) avoid.push({ dir: this.sites.ruin.dir, radius: 400 });
+      const area = 4 * Math.PI * def.radius * def.radius;
+      this.pois = planPOIs(s, def, { near: this.sites.shipPad?.dir || null, avoid, count: Math.max(6, Math.min(60, Math.round(area / 3e7))) });
+    } else this.pois = [];
   }
 
   // Abandoned Precursor research outpost. Not marked on any map.

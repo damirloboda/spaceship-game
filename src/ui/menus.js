@@ -17,7 +17,7 @@ import { guardStatus, log } from '../core/log.js';
 
 const SUIT_COLORS = ['#e8eef5', '#f2a33a', '#3a7bf2', '#d94a4a', '#3fbf7f', '#8a5cf0', '#2b2f36', '#f2e14a'];
 const VISOR_COLORS = ['#39d0ff', '#ffb13d', '#ff4f8b', '#7dff6b', '#ffffff', '#b58bff'];
-const SELLABLE = ['ferrite', 'carbon', 'cobalt', 'oxyite', 'aurum', 'ice', 'biosample', 'mineral_sample'];
+const SELLABLE = ['ferrite', 'carbon', 'cobalt', 'oxyite', 'aurum', 'ice', 'biosample', 'mineral_sample', 'relic', 'fossil', 'crystal_core'];
 
 export class Menus {
   constructor(game, root) {

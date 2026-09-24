@@ -94,6 +94,31 @@ try {
   // Hand-made animated models are in use (ship hull, player, creatures).
   const models = await ev(() => { const g = window.__game; const f = g.player.body.fauna; const c = f.spawnAt(g.player.pos.clone().addScaledVector(g.player.forward, 12)); return { shell: !!g.ship.model.shell, player: !!g.player.anim, creature: !!c?.anim, trees: g.player.body.scatter.species.filter((s) => s.model).length }; });
   check('animated models loaded', models.shell && models.player && models.creature && models.trees > 5, JSON.stringify(models));
+  // Points of interest: the nearest site to the landing area is ruins; walk
+  // up, get the discovery, use the altar, receive a relic. Then walk back.
+  const poi = await ev(() => {
+    const g = window.__game, p = g.player, b = p.body;
+    const back = { pos: p.pos.clone(), fwd: p.forward.clone() };
+    const site = b.pois[0];
+    const c = g.pois.place(b, site);
+    const up = c.clone().normalize();
+    const side = new up.constructor(0, 1, 0).cross(up).normalize();
+    const at = c.clone().addScaledVector(side, 30).normalize();
+    p.placeOnBody(b, at.clone().multiplyScalar(b.radius + b.surface.heightAt(at.x, at.y, at.z) + 0.1), c.clone().sub(at).normalize());
+    g.simulate(1, 1 / 30);
+    const found = g.pois.isFound(site);
+    const loot = site.obj.lootLocal[0];
+    p.pos.copy(loot.local);
+    const it = g.pois.interaction(b, p.pos);
+    const before = g.state.count('relic');
+    it?.action();
+    g.menus.closeAll();
+    const r = { kind: site.kind, found, key: it?.key, relic: g.state.count('relic') - before, markers: g.pois.markers().length, pois: b.pois.length };
+    p.placeOnBody(b, back.pos, back.fwd);
+    g.simulate(0.5, 1 / 30);
+    return r;
+  });
+  check('points of interest: discover ruins, loot the altar', poi.found && poi.key === 'poi.act.altar' && poi.relic === 1 && poi.pois >= 20, JSON.stringify(poi));
   // 6. Board the ship from beside the cockpit (not only at the ramp)
   await ev(() => { const g = window.__game; const s = g.ship; const side = s.body.spin.worldToLocal(s.root.localToWorld(new s.root.position.constructor(-7, -2.6, -6))); g.player.placeOnBody(s.body, side, null); });
   await ev(() => window.__game.simulate(0.1));

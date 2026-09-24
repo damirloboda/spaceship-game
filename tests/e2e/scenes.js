@@ -168,3 +168,21 @@ window.__scenes.step = (secs = 2) => {
   for (let i = 0; i < n; i++) { g.simulate(1 / 30, 1 / 30); minAlt = Math.min(minAlt, s.altitude); maxHeat = Math.max(maxHeat, s.entryHeat); }
   return { alt: Math.round(s.altitude), speed: Math.round(s.speed), heat: +maxHeat.toFixed(2), landed: s.landed, dmg: +(window.__hp0 - g.state.ship.modules.hull.hp).toFixed(1), pending: s.body?.terrain.stats.pending };
 };
+// Stand ~dist m from the nearest point of interest of a kind, facing it.
+window.__scenes.poi = (kind, dist = 38, lift = 0) => {
+  const g = window.__game, p = g.player, b = p.body;
+  const list = b.pois.filter((x) => !kind || x.kind === kind);
+  if (!list.length) return { none: kind, kinds: [...new Set(b.pois.map((x) => x.kind))] };
+  const poi = list.sort((a, c) => g.pois.place(b, a).distanceTo(p.pos) - g.pois.place(b, c).distanceTo(p.pos))[0];
+  const c = g.pois.place(b, poi).clone();
+  const up = c.clone().normalize();
+  const side = new up.constructor(0, 1, 0).cross(up).normalize();
+  const at = c.clone().addScaledVector(side, dist).normalize().multiplyScalar(b.radius + b.surface.heightAt(...c.clone().addScaledVector(side, dist).normalize().toArray()) + 0.1);
+  const fwd = c.clone().sub(at); fwd.addScaledVector(up, -fwd.dot(up)).normalize();
+  p.placeOnBody(b, at, fwd);
+  if (lift) p.pos.addScaledVector(up, lift);
+  if (g.cameraMode !== 'third') g.toggleView();
+  g.hud.bannerQueue.length = 0;
+  g.simulate(1.5, 1 / 30);
+  return { kind: poi.kind, id: poi.id, built: !!poi.obj, far: Math.round(g.pois.place(b, poi).distanceTo(p.pos)), n: b.pois.length, kinds: [...new Set(b.pois.map((x) => x.kind))] };
+};

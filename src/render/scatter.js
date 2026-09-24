@@ -158,7 +158,7 @@ export class Scatter {
   paved(d) {
     const R = this.surface.radius;
     for (const z of this.surface.flatZones || []) {
-      if (z.radius < 40) continue;
+      if (z.radius < 40 && !z.clear) continue;
       const c = d[0] * z.x + d[1] * z.y + d[2] * z.z;
       if (Math.acos(Math.min(1, c)) * R < z.radius * 0.92) return true;
     }

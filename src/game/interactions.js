@@ -43,6 +43,9 @@ function onFoot(game) {
   if (body.ruin && body.ruin.localPos.distanceTo(p.pos) < 4) {
     return { key: 'prompt.terminal', action: () => game.director.useRuinTerminal(body) };
   }
+  // Points of interest: altars, black boxes, supply crates, camp traders…
+  const poi = game.pois?.interaction(body, p.pos);
+  if (poi) return poi;
   // Player bases
   for (const b of game.state.bases) {
     if (b.body === body.id && new THREE.Vector3(...b.pos).distanceTo(p.pos) < 4) {

@@ -115,6 +115,14 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
 - **Economy & reputation**: supply/demand prices, reputation tiers that change
   prices and access, crafting, research, museum, bases with storage and a
   garage, hover-bike.
+- **Points of interest**: about one site every 5 km on each planet, picked to
+  suit the world: ancient ruins with a glyph obelisk, crash sites with a
+  smoke column and a black box, abandoned outposts with the last log
+  entries, nomad camps with a campfire, a trader and a healing totem,
+  monoliths that reveal every site on the planet, leviathan fossils and
+  glowing crystal groves. Sites are discovered on arrival (or by flying low),
+  revealed by the scanner, marked on the HUD, and give relics, fossils,
+  crystal cores, salvage and supplies. Light columns guide you from the air.
 - **Living world**: dynamic weather (rain, storms with forked lightning bolts,
   snow, rolling sandstorm/blizzard/ash billows with tinted fog…), meteoroids
   with glowing dust and ion tails crossing open space (near misses shake the

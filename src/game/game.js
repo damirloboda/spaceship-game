@@ -37,6 +37,7 @@ import { atmosphereColor, GradeShader } from '../render/shaders.js';
 import { loadTerrainTextures, terrainTime, setAnisotropy } from '../render/textures.js';
 import { AsteroidFields } from '../render/asteroids.js';
 import { SpaceMeteors } from '../render/meteors.js';
+import { POISystem } from './poiSystem.js';
 import { Weapons } from './weapons.js';
 
 const tv = new THREE.Vector3();
@@ -205,6 +206,7 @@ export class Game {
     this.player = new Player(this);
     this.skimmer = new Skimmer(this);
     this.asteroids = new AsteroidFields(this);
+    this.pois = new POISystem(this);
     this.meteors = new SpaceMeteors(this, this.settings.platform === 'mobile' ? 4 : 6);
     this.weapons = new Weapons(this);
     this.loadSystem(state.location.systemId);
@@ -581,6 +583,7 @@ export class Game {
     }
     this.updateVitals(dt);
     this.director.update(dt);
+    guard('pois', () => this.pois.update(dt));
     for (const m of Object.values(this.markets)) m.update(dt);
     this.updateWorldVisuals(dt);
     this.updateCamera(dt);

@@ -312,6 +312,7 @@ export class Hud {
       const w = m.world ? m.world.clone() : m.frame ? m.frame.toWorld(m.ref ? m.ref.pos : m.local) : null;
       if (w) out.push({ label: m.label, world: w, color: m.color, icon: '◇', small: m.kind === 'deposit' || m.kind === 'fauna' });
     }
+    for (const m of g.pois?.markers() || []) out.push(m);
     for (const q of g.director.questMarkers()) out.push({ label: q.label, world: q.frame.toWorld(q.local), color: q.color, icon: '!' });
     const nt = g.navTarget;
     if (nt?.world) out.push({ label: nt.label, world: nt.world(), color: '#ffffff', icon: '⊕', target: true });

@@ -141,7 +141,7 @@ export class GrassField {
     const dir = new THREE.Vector3(), pos = new THREE.Vector3();
     const col = [0, 0, 0];
     // No grass on paved ground: city plazas, spaceport pads, ruins.
-    const zones = (s.flatZones || []).filter((z) => z.radius >= 40);
+    const zones = (s.flatZones || []).filter((z) => z.radius >= 40 || z.clear);
     for (let i = 0; i < this.perTile; i++) {
       const la = cell.la + (rng.next() - 0.5) * cell.dLat;
       const lo = cell.lo + (rng.next() - 0.5) * cell.dLon;
