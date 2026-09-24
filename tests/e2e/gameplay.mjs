@@ -144,6 +144,21 @@ try {
   const re = await ev(() => ({ mode: window.__game.mode, jet: window.__game.state.jetpack.owned, nitro: window.__game.state.ship.nitro.installed, mined: window.__game.state.stats.mined, landed: window.__game.ship.landed }));
   check('save/load keeps progress', re.jet && re.nitro && re.mined >= 1 && re.mode === 'pilot' && !re.landed, JSON.stringify(re));
   await page.screenshot({ path: `${OUT}/gp-reloaded.png` });
+  // 9. Dive nose-down at the ground: the landing assist should set it down.
+  const dive = await ev(() => {
+    const g = window.__game, s = g.ship;
+    const up = s.root.position.clone().normalize();
+    s.root.position.copy(up).multiplyScalar(s.body.groundRadius(up) + 250);
+    s.vel.copy(up).multiplyScalar(-30);
+    s.root.quaternion.setFromAxisAngle(new s.root.position.constructor(1, 0, 0), 0);
+    s.alignUp(up, null, 1);
+    s.root.rotateX(-0.7);
+    s.throttle = 0.2;
+    const hp = g.state.ship.modules.hull.hp;
+    g.simulate(25, 1 / 30);
+    return { landed: s.landed, alt: Math.round(s.altitude), dmg: +(hp - g.state.ship.modules.hull.hp).toFixed(1) };
+  });
+  check('nose-down approach lands without crashing', dive.landed && dive.dmg < 5, JSON.stringify(dive));
 } catch (e) {
   check('no exception', false, e.message);
   await page.screenshot({ path: `${OUT}/gp-fail.png` }).catch(() => {});

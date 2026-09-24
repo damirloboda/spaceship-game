@@ -86,6 +86,16 @@ input, textarea { font-family: var(--mono); user-select: text; -webkit-user-sele
 .shiphud .lb.active { color: #fff; }
 .shiphud .od { color: var(--accent); font-weight: 700; letter-spacing: 0.3em; }
 .shiphud .ap { color: var(--ok); font-weight: 700; letter-spacing: 0.2em; font-size: 13px; }
+.shiphud .landguide { margin-top: 6px; padding: 7px 9px; border-radius: 10px; background: rgba(8, 20, 30, 0.55); border: 1px solid rgba(120, 255, 200, 0.35); font-size: 12px; }
+.shiphud .landguide .lg-row { display: flex; justify-content: space-between; gap: 8px; font-family: 'JetBrains Mono', monospace; }
+.shiphud .landguide b { letter-spacing: 0.08em; color: var(--ok); }
+.shiphud .landguide.fast { border-color: rgba(255, 170, 80, 0.6); }
+.shiphud .landguide.fast b { color: #ffb050; animation: pulse 0.8s infinite; }
+.shiphud .landguide.water { border-color: rgba(90, 170, 255, 0.6); }
+.shiphud .landguide.water b { color: #7fc0ff; }
+.shiphud .landguide .lg-bar { height: 4px; margin: 5px 0 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.shiphud .landguide .lg-bar i { display: block; height: 100%; background: linear-gradient(90deg, #3ef0b0, #b8ffe6); }
+.shiphud .landguide .lg-hint { opacity: 0.8; font-size: 11px; }
 .shiphud .emg { color: var(--danger); font-weight: 700; letter-spacing: 0.2em; }
 .warnings { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .warn { color: var(--danger); font-weight: 700; letter-spacing: 0.25em; font-size: 14px; text-shadow: 0 0 8px rgba(255, 60, 60, 0.6); }
@@ -406,3 +416,7 @@ body.touch .vitals { width: 190px; padding: 10px 12px; }
 .dopt.act { border-color: rgba(255, 177, 61, 0.5); }
 .dopt.act i { color: var(--accent-2); }
 @media (prefers-reduced-motion: reduce) { .bubble.fresh { animation: none; opacity: 1; } }
+
+/* Auto-land: the USE button turns into a big green LAND button. */
+.tb.tb-interact.land { background: radial-gradient(circle at 35% 30%, rgba(120, 255, 200, 0.55), rgba(20, 120, 90, 0.75)); border-color: rgba(150, 255, 210, 0.9); transform: scale(1.12); box-shadow: 0 0 22px rgba(62, 240, 176, 0.55); }
+.tb.tb-interact.land small { color: #eafff6; font-weight: 800; }

@@ -186,6 +186,25 @@ export class Ship {
         if (inAtmo) this.emergency = true;
       }
     }
+    // Ground-proximity assist: near the surface the ship levels itself and
+    // the sink rate is capped, so flying down onto a planet ends in a landing
+    // instead of a crash.
+    this.assist = 0;
+    if (this.body && !this.autopilot && piloting && this.altitude < 180) {
+      const dir = this.root.position.clone().normalize();
+      const alt = Math.max(0, this.altitude);
+      const k = 1 - alt / 180;
+      this.assist = k;
+      this.alignUp(dir, null, Math.min(1, k * k * dt * 2.2));
+      const vRad = this.vel.dot(dir);
+      const maxDown = alt * 0.45 + 4;
+      if (vRad < -maxDown) this.vel.addScaledVector(dir, -maxDown - vRad);
+      // Bleed horizontal speed in the last metres when the throttle is low.
+      if (alt < 25 && this.throttle < 0.3) {
+        const h = this.vel.clone().addScaledVector(dir, -this.vel.dot(dir));
+        this.vel.addScaledVector(h, -(1 - Math.exp(-1.6 * dt)));
+      }
+    }
     // Black-hole pull and safety.
     this.applyHazards(dt, world);
     this.root.position.addScaledVector(this.vel, dt);
@@ -237,8 +256,22 @@ export class Ship {
     const upright = shipUp.dot(dir);
     const vRad = this.vel.dot(dir);
     const overWater = this.body.def.ocean && ground < this.body.radius;
-    if (!overWater && this.speed < 28 && upright > 0.75 && vRad > -14) {
+    if (!overWater && this.speed < 45 && upright > 0.3 && vRad > -20) {
       this.land(dir);
+      return;
+    }
+    // Skimming the ground level and slow-sinking is a scrape, not a crash:
+    // push up, brake hard, no damage.
+    const skim = upright > 0.3 && vRad > -20;
+    if (skim && !overWater) {
+      p.copy(dir).multiplyScalar(surf + GEAR_HEIGHT + 0.2);
+      if (vRad < 0) this.vel.addScaledVector(dir, -vRad);
+      this.vel.multiplyScalar(0.6);
+      this.shake = Math.max(this.shake, 0.4);
+      if (!this.skimToastT || performance.now() - this.skimToastT > 4000) {
+        this.skimToastT = performance.now();
+        this.game.hud.toast('hud.land_slow', 'warn');
+      }
       return;
     }
     // Crash: damage and bounce, never an instant loss.

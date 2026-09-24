@@ -78,6 +78,27 @@ export class Hud {
     return KEYS[dev];
   }
 
+  // Approach guide: vertical speed, go/no-go and the auto-land key.
+  landingGuide(ship) {
+    if (!ship.body || ship.landed || ship.lb.phase !== 'none' || !(ship.altitude < 2000)) return '';
+    const dir = ship.root.position.clone().normalize();
+    const vs = ship.vel.dot(dir);
+    const def = ship.body.def;
+    const water = def.ocean && ship.body.groundRadius(dir) < ship.body.radius;
+    const fast = ship.speed > 45 || vs < -20;
+    const state = water ? 'water' : fast ? 'fast' : 'ok';
+    const label = water ? 'hud.land_water' : fast ? 'hud.land_fast' : 'hud.land_ready';
+    const alt = Math.max(0, ship.altitude);
+    const bar = Math.min(100, (1 - Math.min(1, alt / 2000)) * 100);
+    return h('div', { class: `landguide ${state}` },
+      h('div', { class: 'lg-row' },
+        h('span', {}, `${t('hud.vspeed')} ${vs >= 0 ? '+' : ''}${vs.toFixed(0)} m/s`),
+        h('b', {}, t(label))),
+      h('div', { class: 'lg-bar' }, h('i', { style: `width:${bar.toFixed(0)}%` })),
+      ship.autopilot ? '' : h('div', { class: 'lg-hint' }, alt < 200 ? t('hud.land_guide') : t('hud.land_press', { key: this.keys().interact })),
+    );
+  }
+
   relabel() { /* texts are re-rendered every frame */ }
 
   // ---------------- messages ----------------
@@ -215,6 +236,7 @@ export class Hud {
         ship.overdrive ? h('div', { class: 'od' }, t('hud.overdrive')) : '',
         ship.autopilot ? h('div', { class: 'ap' }, t(ship.autopilot.mode === 'land' ? 'hud.autoland' : 'hud.autopilot_on')) : '',
         ship.emergency ? h('div', { class: 'emg blink' }, t('hud.emergency_landing')) : '',
+        this.landingGuide(ship),
       );
       E.ship.style.display = '';
     } else E.ship.style.display = 'none';

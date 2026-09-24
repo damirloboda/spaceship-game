@@ -105,7 +105,7 @@ function piloting(game) {
   const dr = game.director.derelictNear();
   if (dr) return { key: 'prompt.rescue', action: () => game.director.rescue(dr) };
   if (ship.landed) return { key: 'prompt.leave_seat', action: () => game.standUpFromSeat() };
-  if (ship.body && ship.altitude < 600) return { key: 'prompt.autoland', action: () => ship.engageAutopilot('land') };
+  if (ship.body && ship.altitude < 2000 && !ship.autopilot) return { key: 'prompt.autoland', action: () => ship.engageAutopilot('land') };
   return { key: 'prompt.leave_seat', action: () => game.standUpFromSeat() };
 }
 

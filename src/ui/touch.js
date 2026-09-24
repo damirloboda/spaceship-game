@@ -113,6 +113,7 @@ export class TouchControls {
     if (b.dataset.label === label) return;
     b.dataset.label = label;
     b.classList.toggle('ready', !!it);
+    b.classList.toggle('land', it?.key === 'prompt.autoland');
     b.replaceChildren(h('span', {}, t('touch.use')), label ? h('small', {}, label) : '');
   }
 
