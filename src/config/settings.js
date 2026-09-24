@@ -10,11 +10,13 @@ export const PC_PRESETS = {
 };
 
 export const MOBILE_PRESETS = {
-  BATTERY: { detail: false, pixelRatio: 1.0, grid: 12, split: 1.2, flora: 0.2, shadows: 0, bloom: false, creatures: 8, clouds: 1, weather: 300, fpsCap: 30, msaa: 2, aniso: 2, shadowRange: 50 },
-  PERFORMANCE: { detail: false, pixelRatio: 1.25, grid: 14, split: 1.3, flora: 0.35, shadows: 0, bloom: false, creatures: 10, clouds: 1, weather: 500, fpsCap: 60, msaa: 2, aniso: 2, shadowRange: 50 },
-  BALANCED: { detail: true, pixelRatio: 1.35, grid: 16, split: 1.45, flora: 0.5, shadows: 1024, bloom: true, creatures: 14, clouds: 2, weather: 800, fpsCap: 60, msaa: 4, aniso: 4, shadowRange: 60 },
-  QUALITY: { detail: true, pixelRatio: 1.7, grid: 20, split: 1.5, flora: 0.8, shadows: 1024, bloom: true, creatures: 18, clouds: 2, weather: 1200, fpsCap: 60, msaa: 4, aniso: 8, shadowRange: 70 },
-  ULTRA_MOBILE: { detail: true, pixelRatio: 2.5, grid: 24, split: 1.7, flora: 1.1, shadows: 2048, bloom: true, creatures: 24, clouds: 3, weather: 1600, fpsCap: 60, msaa: 4, aniso: 16, shadowRange: 90 },
+  // Phones: no post-processing (canvas MSAA is nearly free on tile GPUs),
+  // shadows only on the top presets, short grass and flora ranges.
+  BATTERY: { detail: false, pixelRatio: 1.0, grid: 10, split: 1.15, flora: 0.2, shadows: 0, bloom: false, creatures: 6, clouds: 1, weather: 250, fpsCap: 30, msaa: 0, aniso: 2, shadowRange: 50, atmoSteps: 5, grass: 0 },
+  PERFORMANCE: { detail: true, pixelRatio: 1.1, grid: 12, split: 1.25, flora: 0.3, shadows: 0, bloom: false, creatures: 8, clouds: 1, weather: 400, fpsCap: 60, msaa: 0, aniso: 4, shadowRange: 50, atmoSteps: 6, grass: 0.5 },
+  BALANCED: { detail: true, pixelRatio: 1.25, grid: 14, split: 1.35, flora: 0.4, shadows: 0, bloom: false, creatures: 10, clouds: 1, weather: 600, fpsCap: 60, msaa: 0, aniso: 4, shadowRange: 60, atmoSteps: 6, grass: 0.8 },
+  QUALITY: { detail: true, pixelRatio: 1.5, grid: 18, split: 1.5, flora: 0.7, shadows: 1024, bloom: true, creatures: 16, clouds: 2, weather: 1000, fpsCap: 60, msaa: 2, aniso: 8, shadowRange: 70, atmoSteps: 8, grass: 1 },
+  ULTRA_MOBILE: { detail: true, pixelRatio: 1.9, grid: 22, split: 1.7, flora: 1.0, shadows: 2048, bloom: true, creatures: 22, clouds: 3, weather: 1500, fpsCap: 60, msaa: 4, aniso: 16, shadowRange: 90, atmoSteps: 10, grass: 1 },
 };
 
 export function isMobileDevice() {

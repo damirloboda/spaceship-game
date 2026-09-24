@@ -75,6 +75,7 @@ export class Game {
     this.streaks.position.set(0, 0, 0);
     this.tunnel.position.set(0, 0, 0);
     this.environment = new Environment(this.renderer, this.background, this.scene);
+    this.environment.slow = this.mobile;
     loadTerrainTextures();
     this.input = new Input(canvas, this.settings);
     this.audio = new AudioSystem(this.settings);
@@ -1041,6 +1042,20 @@ export class Game {
     this.dynTimer = (this.dynTimer || 0) + dt;
     if (this.dynTimer < 1.5) return;
     this.dynTimer = 0;
+    // Phones that stay slow at the lowest resolution drop one graphics preset.
+    if (this.settings.platform === 'mobile' && 1 / avg < 24 && this.dynScale <= 0.71) {
+      this.slowTime = (this.slowTime || 0) + 1.5;
+      const order = ['BATTERY', 'PERFORMANCE', 'BALANCED', 'QUALITY', 'ULTRA_MOBILE'];
+      const i = order.indexOf(this.settings.preset);
+      if (this.slowTime > 6 && i > 0) {
+        this.slowTime = 0;
+        this.settings.preset = order[i - 1];
+        saveSettings(this.settings);
+        this.applyGraphics();
+        this.hud?.toast('hud.quality_lowered', 'info', { preset: this.settings.preset.replace('_', ' ') });
+        return;
+      }
+    } else this.slowTime = 0;
     if (avg > target * 1.25 && this.dynScale > 0.7) this.setPixelScale(Math.max(0.7, this.dynScale - 0.05));
     else if (avg < target * 0.85 && this.dynScale < 1) this.setPixelScale(Math.min(1, this.dynScale + 0.05));
   }

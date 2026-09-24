@@ -118,6 +118,27 @@ try {
     g.simulate(0.5, 1 / 30);
     return r;
   });
+  // Ruins are solid: walking at the platform from the side stops at its edge.
+  const solid = await ev(() => {
+    const g = window.__game, p = g.player, b = p.body, site = b.pois[0];
+    const o = site.obj, c = g.pois.place(b, site);
+    const back = { pos: p.pos.clone(), fwd: p.forward.clone() };
+    const s = new p.pos.constructor(26, 0, 0).applyMatrix4(o.group.matrix);
+    const d = s.clone().normalize();
+    p.placeOnBody(b, d.multiplyScalar(b.groundRadius(d)), c.clone().sub(s).normalize());
+    g.input.touch.move.y = 1;
+    let minD = 1e9;
+    for (let i = 0; i < 300; i++) {
+      const f = c.clone().sub(p.pos); f.addScaledVector(p.up, -f.dot(p.up)).normalize(); p.forward.copy(f);
+      g.simulate(1 / 30, 1 / 30);
+      minD = Math.min(minD, p.pos.distanceTo(c));
+    }
+    g.input.touch.move.y = 0;
+    p.placeOnBody(b, back.pos, back.fwd);
+    g.simulate(0.3, 1 / 30);
+    return { minD: +minD.toFixed(1), colliders: o.colliders.length };
+  });
+  check('ruins have collision (cannot walk through)', solid.minD > 12 && solid.colliders > 10, JSON.stringify(solid));
   check('points of interest: discover ruins, loot the altar', poi.found && poi.key === 'poi.act.altar' && poi.relic === 1 && poi.pois >= 20, JSON.stringify(poi));
   // 6. Board the ship from beside the cockpit (not only at the ramp)
   await ev(() => { const g = window.__game; const s = g.ship; const side = s.body.spin.worldToLocal(s.root.localToWorld(new s.root.position.constructor(-7, -2.6, -6))); g.player.placeOnBody(s.body, side, null); });

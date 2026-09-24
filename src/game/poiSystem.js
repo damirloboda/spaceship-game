@@ -51,12 +51,66 @@ export class POISystem {
     obj.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
     obj.group.rotateY(p.heading);
     obj.group.name = `poi:${p.kind}`;
+    obj.colliders = this.collectColliders(obj.group);
     mergeStatic(obj.group);
     body.spin.add(obj.group);
     obj.group.updateMatrix();
     // Loot points in body-local coordinates.
     obj.lootLocal = obj.loot.map((l) => ({ ...l, local: l.pos.clone().applyMatrix4(obj.group.matrix) }));
     p.obj = obj;
+  }
+
+  // Solid parts as boxes in site space (y up): low ones can be stood on,
+  // tall ones block. Glow, glass, flat decals and arches are skipped.
+  collectColliders(group) {
+    group.updateMatrixWorld(true);
+    const inv = group.matrixWorld.clone().invert();
+    const out = [];
+    const box = new THREE.Box3();
+    const m = new THREE.Matrix4();
+    group.traverse((o) => {
+      if (!o.isMesh || o.isPoints) return;
+      const mat = o.material;
+      if (mat.transparent || mat.isShaderMaterial || mat.blending === THREE.AdditiveBlending) return;
+      const type = o.geometry.type;
+      if (/Plane|Circle|Torus|Tube|Ring/.test(type)) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      box.copy(o.geometry.boundingBox).applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
+      const sx = box.max.x - box.min.x, sz = box.max.z - box.min.z, sy = box.max.y - box.min.y;
+      if (Math.max(sx, sz) < 0.35 || sy < 0.15) return;
+      out.push({ min: box.min.clone(), max: box.max.clone() });
+    });
+    return out;
+  }
+
+  // Player collision against nearby sites. Returns the body-local radius of
+  // a walkable top under the player (0 if none) and pushes out of walls.
+  collide(body, pos, radius) {
+    let floorR = 0;
+    for (const p of body.pois || []) {
+      const o = p.obj;
+      if (!o?.colliders?.length || o.group.position.distanceToSquared(pos) > 90 * 90) continue;
+      if (!o.inv) o.inv = o.group.matrix.clone().invert();
+      const l = pos.clone().applyMatrix4(o.inv);
+      for (const c of o.colliders) {
+        if (l.x < c.min.x - radius || l.x > c.max.x + radius || l.z < c.min.z - radius || l.z > c.max.z + radius) continue;
+        if (l.y > c.max.y + 0.05 || l.y + 1.7 < c.min.y) continue;
+        const inside = l.x > c.min.x && l.x < c.max.x && l.z > c.min.z && l.z < c.max.z;
+        if (c.max.y - l.y <= 0.85 && inside) {
+          // Step up onto it.
+          floorR = Math.max(floorR, pos.length() + (c.max.y - l.y));
+          continue;
+        }
+        if (c.max.y - l.y <= 0.85) continue;
+        // Push out along the shallowest side.
+        const dx1 = l.x - (c.min.x - radius), dx2 = c.max.x + radius - l.x;
+        const dz1 = l.z - (c.min.z - radius), dz2 = c.max.z + radius - l.z;
+        const mn = Math.min(dx1, dx2, dz1, dz2);
+        if (mn === dx1) l.x -= dx1; else if (mn === dx2) l.x += dx2; else if (mn === dz1) l.z -= dz1; else l.z += dz2;
+      }
+      pos.copy(l.applyMatrix4(o.group.matrix));
+    }
+    return floorR;
   }
 
   unbuild(p) {

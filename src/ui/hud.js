@@ -78,6 +78,61 @@ export class Hud {
     return KEYS[dev];
   }
 
+  updatePanels(mode, onFoot) {
+    const g = this.game;
+    const st = g.state;
+    const E = this.el;
+    // Vitals
+    const v = st.vitals;
+    const jp = st.jetpack;
+    const rows = [
+      this.row('hud.health', v.health, v.health < 30 ? 'bad' : ''),
+      this.row('hud.oxygen', v.oxygen, v.oxygen < 25 ? 'bad' : 'oxy'),
+      this.row('hud.suit', v.suitEnergy, v.suitEnergy < 25 ? 'bad' : 'energy'),
+    ];
+    if (jp.owned) {
+      rows.push(this.row('hud.jetfuel', jp.fuelPct * 100, 'jet'));
+      rows.push(this.row(jp.overheated ? 'hud.overheat' : 'hud.heat', jp.heatPct * 100, jp.overheated ? 'bad blink' : 'heat'));
+    }
+    E.vitals.replaceChildren(...rows, h('div', { class: 'credits' }, `◇ ${st.credits.toLocaleString('en-US')}`));
+    E.vitals.style.display = mode === 'pilot' || mode === 'docked' ? 'none' : '';
+    // Ship panel
+    const sys = st.ship;
+    const ship = g.ship;
+    if (mode === 'pilot' || mode === 'docked') {
+      const lbState = sys.lightbreak.state;
+      const lbLabel = ship.lb.phase !== 'none' ? t('hud.lb_active') : lbState === 'ready' ? t('hud.lightbreak_ready') : sys.nitro.installed ? `${t('hud.lightbreak')} ${Math.round(sys.lightbreak.charge)}%` : t('hud.lb_needs_nitro');
+      E.ship.replaceChildren(
+        h('div', { class: 'big' }, fmtSpeed(ship.speed)),
+        h('div', { class: 'sub' }, ship.body ? `${t('hud.alt')} ${fmtDistance(Math.max(0, ship.altitude))}` : t('hud.deep_space')),
+        this.row('hud.throttle', ship.throttle * 100, 'thr'),
+        this.row('hud.fuel', (sys.fuel / sys.fuelCapacity) * 100, sys.fuel < 15 ? 'bad' : 'fuel'),
+        this.row('hud.nitro', sys.nitro.installed ? sys.nitro.charge : 0, ship.overdrive ? 'nitro on' : 'nitro'),
+        h('div', { class: `lb ${lbState === 'ready' ? 'ready' : ''} ${ship.lb.phase !== 'none' ? 'active' : ''}` }, lbLabel),
+        this.row('hud.hull', sys.modules.hull.hp, sys.modules.hull.hp < 30 ? 'bad' : ''),
+        this.row(g.weapons?.overheated ? 'hud.overheat' : 'hud.weapons', g.weapons?.heat || 0, g.weapons?.overheated ? 'bad blink' : 'heat'),
+        this.row('hud.shield', sys.shieldCharge, 'shield'),
+        ship.overdrive ? h('div', { class: 'od' }, t('hud.overdrive')) : '',
+        ship.autopilot ? h('div', { class: 'ap' }, t(ship.autopilot.mode === 'land' ? 'hud.autoland' : 'hud.autopilot_on')) : '',
+        ship.emergency ? h('div', { class: 'emg blink' }, t('hud.emergency_landing')) : '',
+        this.landingGuide(ship),
+      );
+      E.ship.style.display = '';
+    } else E.ship.style.display = 'none';
+    // Warnings
+    const warns = mode === 'pilot' ? sys.warnings() : [];
+    if (onFoot && this.hazard?.noAir && v.oxygen < 35) warns.push("oxygen_low");
+    if (this.hazard?.hazard && v.suitEnergy < 40) warns.push('hazard');
+    E.warnings.replaceChildren(...warns.map((w) => h('div', { class: 'warn blink' }, t(`warn.${w}`))));
+    // Objective
+    const obj = g.director.currentObjective();
+    if (obj) {
+      const k = this.keys();
+      E.objective.replaceChildren(h('div', { class: 'label' }, t('hud.objective'), h('span', {}, ` ${g.state.tutorial.step + 1}/${TUTORIAL.length}`)), h('div', { class: 'text' }, t(`tut.${obj.id}`, k)));
+      E.objective.style.display = '';
+    } else E.objective.style.display = 'none';
+  }
+
   // Approach guide: vertical speed, go/no-go and the auto-land key.
   landingGuide(ship) {
     if (!ship.body || ship.landed || ship.lb.phase !== 'none' || !(ship.altitude < 2000)) return '';
@@ -203,56 +258,15 @@ export class Hud {
     E.progress.classList.toggle('on', this.progress > 0.01 && g.tools.mining);
     E.progress.firstChild.style.width = `${Math.min(100, this.progress * 100)}%`;
     if (!g.tools.mining) this.progress = 0;
-    // Vitals
-    const v = st.vitals;
-    const jp = st.jetpack;
-    const rows = [
-      this.row('hud.health', v.health, v.health < 30 ? 'bad' : ''),
-      this.row('hud.oxygen', v.oxygen, v.oxygen < 25 ? 'bad' : 'oxy'),
-      this.row('hud.suit', v.suitEnergy, v.suitEnergy < 25 ? 'bad' : 'energy'),
-    ];
-    if (jp.owned) {
-      rows.push(this.row('hud.jetfuel', jp.fuelPct * 100, 'jet'));
-      rows.push(this.row(jp.overheated ? 'hud.overheat' : 'hud.heat', jp.heatPct * 100, jp.overheated ? 'bad blink' : 'heat'));
+    // Panels are rebuilt as DOM: 8 times a second is plenty and keeps
+    // layout work off the frame on phones.
+    this.panelT = (this.panelT || 0) - dt;
+    if (this.panelT <= 0) {
+      this.panelT = 0.125;
+      this.updatePanels(mode, onFoot);
     }
-    E.vitals.replaceChildren(...rows, h('div', { class: 'credits' }, `◇ ${st.credits.toLocaleString('en-US')}`));
-    E.vitals.style.display = mode === 'pilot' || mode === 'docked' ? 'none' : '';
-    // Ship panel
-    const sys = st.ship;
-    const ship = g.ship;
-    if (mode === 'pilot' || mode === 'docked') {
-      const lbState = sys.lightbreak.state;
-      const lbLabel = ship.lb.phase !== 'none' ? t('hud.lb_active') : lbState === 'ready' ? t('hud.lightbreak_ready') : sys.nitro.installed ? `${t('hud.lightbreak')} ${Math.round(sys.lightbreak.charge)}%` : t('hud.lb_needs_nitro');
-      E.ship.replaceChildren(
-        h('div', { class: 'big' }, fmtSpeed(ship.speed)),
-        h('div', { class: 'sub' }, ship.body ? `${t('hud.alt')} ${fmtDistance(Math.max(0, ship.altitude))}` : t('hud.deep_space')),
-        this.row('hud.throttle', ship.throttle * 100, 'thr'),
-        this.row('hud.fuel', (sys.fuel / sys.fuelCapacity) * 100, sys.fuel < 15 ? 'bad' : 'fuel'),
-        this.row('hud.nitro', sys.nitro.installed ? sys.nitro.charge : 0, ship.overdrive ? 'nitro on' : 'nitro'),
-        h('div', { class: `lb ${lbState === 'ready' ? 'ready' : ''} ${ship.lb.phase !== 'none' ? 'active' : ''}` }, lbLabel),
-        this.row('hud.hull', sys.modules.hull.hp, sys.modules.hull.hp < 30 ? 'bad' : ''),
-        this.row(g.weapons?.overheated ? 'hud.overheat' : 'hud.weapons', g.weapons?.heat || 0, g.weapons?.overheated ? 'bad blink' : 'heat'),
-        this.row('hud.shield', sys.shieldCharge, 'shield'),
-        ship.overdrive ? h('div', { class: 'od' }, t('hud.overdrive')) : '',
-        ship.autopilot ? h('div', { class: 'ap' }, t(ship.autopilot.mode === 'land' ? 'hud.autoland' : 'hud.autopilot_on')) : '',
-        ship.emergency ? h('div', { class: 'emg blink' }, t('hud.emergency_landing')) : '',
-        this.landingGuide(ship),
-      );
-      E.ship.style.display = '';
-    } else E.ship.style.display = 'none';
-    // Warnings
-    const warns = mode === 'pilot' ? sys.warnings() : [];
-    if (onFoot && this.hazard?.noAir && v.oxygen < 35) warns.push("oxygen_low");
-    if (this.hazard?.hazard && v.suitEnergy < 40) warns.push('hazard');
-    E.warnings.replaceChildren(...warns.map((w) => h('div', { class: 'warn blink' }, t(`warn.${w}`))));
-    // Objective
-    const obj = g.director.currentObjective();
-    if (obj) {
-      const k = this.keys();
-      E.objective.replaceChildren(h('div', { class: 'label' }, t('hud.objective'), h('span', {}, ` ${g.state.tutorial.step + 1}/${TUTORIAL.length}`)), h('div', { class: 'text' }, t(`tut.${obj.id}`, k)));
-      E.objective.style.display = '';
-    } else E.objective.style.display = 'none';
     // Overlays
+    const v = st.vitals;
     this.hurtAmt = Math.max(0, this.hurtAmt - dt * 0.8);
     const low = Math.max(0, (35 - v.health) / 35);
     E.vignette.style.opacity = String(Math.max(this.hurtAmt, low * 0.6));

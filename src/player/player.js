@@ -287,9 +287,13 @@ export class Player {
     // Ground contact
     const r2 = this.pos.length();
     const dir = tmp.copy(this.pos).divideScalar(r2);
-    const gr = body.groundRadius(dir);
+    // Structures (ruins, outposts…): walk on their floors, bump their walls.
+    const siteFloor = this.game.pois ? this.game.pois.collide(body, this.pos, RADIUS) : 0;
+    dir.copy(this.pos).normalize();
+    const r2b = this.pos.length();
+    const gr = Math.max(body.groundRadius(dir), siteFloor ? siteFloor - (r2 - r2b) : 0);
     const vr2 = this.vel.dot(dir);
-    if (r2 < gr) {
+    if (r2b < gr) {
       this.pos.copy(dir).multiplyScalar(gr);
       if (!this.grounded) {
         this.landImpact = Math.min(1, -vr2 / 12);
@@ -299,7 +303,7 @@ export class Player {
       }
       this.vel.addScaledVector(dir, -vr2);
       this.grounded = true;
-    } else if (this.grounded && r2 - gr < 0.7 && vr2 <= 0.5 && !this.swimming) {
+    } else if (this.grounded && r2b - gr < 0.7 && vr2 <= 0.5 && !this.swimming) {
       // stick to slopes when walking downhill
       this.pos.copy(dir).multiplyScalar(gr);
       this.vel.addScaledVector(dir, -this.vel.dot(dir));

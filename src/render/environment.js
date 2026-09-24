@@ -39,7 +39,8 @@ export class Environment {
   update(dt, state, force = false) {
     this.timer -= dt;
     if (!force && this.timer > 0) return;
-    this.timer = 2;
+    // Re-filtering the environment is a GPU spike: rarely on phones.
+    this.timer = this.slow ? 8 : 2;
     const s = state;
     const u = this.skyUniforms;
     if (s.inAtmo) {

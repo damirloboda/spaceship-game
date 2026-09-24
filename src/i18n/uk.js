@@ -83,6 +83,7 @@ export default {
   'hud.hull': 'Корпус',
   'hud.shield': 'Щит',
   'hud.alt': 'ВИС',
+  "hud.quality_lowered": "Графіку знижено до {preset} для плавної гри",
   "rest.woke_up": "Доброго ранку, {name}. Ви чудово виспалися.",
   "rest.woke_nap": "Ви прокинулися бадьорим.",
   "poi.name.ruins": "Стародавні руїни",

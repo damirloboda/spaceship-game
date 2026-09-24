@@ -155,7 +155,7 @@ export class Body {
     const def = this.def;
     if (def.atmosphere) {
       const hq = (q.clouds || 0) >= 2;
-      const mat = createAtmosphereMaterial({ radius: this.radius, top: this.atmoTop, color: def.atmosphere.color, density: def.atmosphere.density, steps: hq ? 12 : 8, lightSteps: hq ? 4 : 3 });
+      const mat = createAtmosphereMaterial({ radius: this.radius, top: this.atmoTop, color: def.atmosphere.color, density: def.atmosphere.density, steps: q.atmoSteps || (hq ? 12 : 8), lightSteps: q.atmoSteps && q.atmoSteps < 8 ? 2 : hq ? 4 : 3 });
       this.atmoMaterial = mat;
       this.atmo = new THREE.Mesh(new THREE.SphereGeometry(this.atmoTop, 96, 48), mat);
       this.atmo.renderOrder = 5;
@@ -206,8 +206,8 @@ export class Body {
   // Dense grass blades near the player on worlds with life.
   buildGrass(q) {
     this.grass = null;
-    if (!this.def.life || !this.def.atmosphere) return;
-    const f = Math.min(1.3, q.flora ?? 1);
+    if (!this.def.life || !this.def.atmosphere || q.grass === 0) return;
+    const f = Math.min(1.3, q.flora ?? 1) * (q.grass ?? 1);
     this.grass = new GrassField(this, { radius: 14 + 22 * f, perTile: Math.round(40 + 120 * Math.min(1, f) * Math.min(1, f)) });
     if (this.currentFog !== undefined) this.grass.material.fog = this.currentFog;
   }

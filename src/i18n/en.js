@@ -88,6 +88,7 @@ export default {
   'hud.hull': 'Hull',
   'hud.shield': 'Shield',
   'hud.alt': 'ALT',
+  "hud.quality_lowered": "Graphics lowered to {preset} for smoother play",
   "rest.woke_up": "Good morning, {name}. You feel rested.",
   "rest.woke_nap": "You wake up refreshed.",
   "poi.name.ruins": "Ancient ruins",

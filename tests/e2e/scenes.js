@@ -214,3 +214,21 @@ window.__scenes.sleepStep = (secs) => {
   for (let i = 0; i < Math.round(secs * 30); i++) g.frame ? g.simulate(1 / 30, 1 / 30) : 0;
   return { sleeping: !!g.sleep, t: g.sleep ? +g.sleep.t.toFixed(2) : null, hour: +(g.localHour || 0).toFixed(1), rotX: +g.player.model.rotation.x.toFixed(2) };
 };
+// Walk straight at the centre of the nearest ruins for `secs`; report where we end up.
+window.__scenes.walkRuins = (secs = 12) => {
+  const g = window.__game, p = g.player, b = p.body;
+  const r = window.__scenes.poi('ruins', 30);
+  const site = b.pois.find((x) => x.id === r.id);
+  const c = g.pois.place(b, site);
+  g.input.touch.move.y = 1;
+  const start = p.pos.distanceTo(c);
+  let minD = Infinity, maxLift = 0;
+  for (let i = 0; i < secs * 30; i++) {
+    const f = c.clone().sub(p.pos); f.addScaledVector(p.up, -f.dot(p.up)).normalize(); p.forward.copy(f);
+    g.simulate(1 / 30, 1 / 30);
+    minD = Math.min(minD, p.pos.distanceTo(c));
+    maxLift = Math.max(maxLift, b.altitude(p.pos));
+  }
+  g.input.touch.move.y = 0;
+  return { start: Math.round(start), minD: +minD.toFixed(1), lift: +maxLift.toFixed(2), cols: site.obj.colliders.length };
+};

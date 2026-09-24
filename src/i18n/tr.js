@@ -83,6 +83,7 @@ export default {
   'hud.hull': 'Gövde',
   'hud.shield': 'Kalkan',
   'hud.alt': 'İRT',
+  "hud.quality_lowered": "Akıcı oyun için grafik {preset} seviyesine düşürüldü",
   "rest.woke_up": "Günaydın, {name}. Dinlenmiş hissediyorsun.",
   "rest.woke_nap": "Zinde uyandın.",
   "poi.name.ruins": "Kadim harabeler",
