@@ -49,7 +49,7 @@ export class Body {
     }
     if (def.type === 'bioluminescent') this.terrainMaterial.emissive = new THREE.Color(0.0, 0.05, 0.06);
     this.terrainMaterial.envMapIntensity = 0.35;
-    if (q.detail) applyTerrainDetail(this.terrainMaterial, { strength: def.type === 'barren' || def.type === 'crystal' ? 0.8 : 1 });
+    if (q.detail) applyTerrainDetail(this.terrainMaterial, { strength: def.type === 'barren' || def.type === 'crystal' ? 0.8 : 1, seaRadius: def.ocean ? def.radius : 0 });
     this.waterMaterial = def.ocean ? createWaterMaterial(def.type === 'toxic' ? [0.12, 0.25, 0.05] : [0.02, 0.14, 0.26]) : null;
     this.flora = generateFlora(def, 20);
     this.faunaSpecies = generateFauna(def, 10);

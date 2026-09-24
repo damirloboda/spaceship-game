@@ -423,39 +423,118 @@ export class Director {
   }
 
   // Dialogue options for a citizen, including their side story.
-  dialogFor(npc) {
+  // A conversation is a history of chat lines plus the topics you can raise.
+  // topic: null (greeting) or one of about/planet/city/work/tip/haggle/rumor.
+  dialogFor(npc, topic = null, conv = null) {
     const c = npc.c;
     const st = this.state;
-    const lines = [t(`npc.greet.${c.personality}`, { name: st.profile.name }), t(`npc.job.${c.profession}`)];
-    const options = [];
-    const story = c.story;
-    if (story) {
-      const q = st.quests;
-      if (story.id === 'lost_drone') {
-        if (q.done.lost_drone) lines.push(t('quest.lost_drone.thanks'));
-        else if (st.count('drone_part')) options.push({ key: 'quest.lost_drone.return', action: () => this.completeDrone(npc) });
-        else if (q.active.lost_drone) lines.push(t('quest.lost_drone.remind'));
-        else options.push({ key: 'quest.lost_drone.accept', action: () => { q.active.lost_drone = { t: st.time }; this.game.hud.toast('hud.quest_accepted', 'accent'); } });
-      } else if (story.id === 'sample_request') {
-        if (q.done.sample_request) lines.push(t('quest.sample.thanks'));
-        else if (st.count('cobalt') >= story.count) options.push({ key: 'quest.sample.deliver', action: () => { st.removeItem('cobalt', story.count); st.credits += story.reward; q.done.sample_request = true; st.reputation.veyari += 6; this.game.hud.toast('hud.quest_done', 'accent', { credits: story.reward }); } });
-        else lines.push(t('quest.sample.ask', { n: story.count }));
-      } else if (story.id === 'moon_signal') {
-        lines.push(t('quest.moon_signal'));
-      } else if (story.id === 'old_pilot') {
-        lines.push(t('quest.old_pilot'));
-      } else if (story.id === 'merchant_price') {
-        lines.push(t('quest.merchant_tip'));
+    const g = this.game;
+    const body = g.player.body;
+    conv = conv || { history: [], asked: new Set() };
+    const say = (key, params) => conv.history.push({ who: 'npc', text: t(key, params) });
+    const you = (key, params) => conv.history.push({ who: 'you', text: t(key, params) });
+    const rng = new RNG(hashString(c.name) ^ Math.floor(st.time / 300));
+    const job = (st.quests.jobs = st.quests.jobs || {});
+    const jobKey = `${body?.id}/${c.name}`;
+    if (!topic) {
+      say(`npc.greet.${c.personality}`, { name: st.profile.name });
+      say(`npc.job.${c.profession}`);
+      st.reputation.veyari = (st.reputation.veyari || 0) + 0.2;
+      st.addXP('diplomacy', 1);
+    } else {
+      conv.asked.add(topic);
+      if (topic === 'about') {
+        you('dialog.ask_about');
+        say('dialog.about', { prof: t(`npcprof.${c.profession}`).toLowerCase(), years: 3 + (hashString(c.name) % 30) });
+        say(`dialog.mood.${c.personality}`);
+      } else if (topic === 'planet') {
+        you('dialog.ask_planet');
+        say('dialog.planet', { planet: body?.def.name || '?', species: body?.faunaSpecies?.length || 0 });
+        say(body?.def.danger === 'SAFE' ? 'dialog.danger_safe' : 'dialog.danger_wild');
+        if (body?.def.ocean) say('dialog.planet_ocean');
+      } else if (topic === 'city') {
+        you('dialog.ask_city');
+        say('dialog.city', { city: body?.city?.name || '', civ: body?.city?.civ?.name || '' });
+      } else if (topic === 'tip') {
+        you('dialog.ask_tip');
+        say(`dialog.tip.${rng.int(0, 7)}`);
+      } else if (topic === 'rumor') {
+        you('dialog.rumor');
+        say(`rumor.${rng.int(0, 5)}`);
+      } else if (topic === 'haggle') {
+        you('dialog.haggle');
+        const chance = 0.25 + st.skillLevel('diplomacy') * 0.12 + (c.personality === 'cheerful' || c.personality === 'shy' ? 0.2 : 0) - (c.personality === 'grumpy' ? 0.2 : 0);
+        if (rng.next() < chance) {
+          const pct = 5 + rng.int(0, 2) * 5;
+          st.haggle = { until: st.time + 900, pct };
+          say('dialog.haggle_ok', { pct });
+          st.addXP('diplomacy', 4);
+        } else say('dialog.haggle_no');
+      } else if (topic === 'work') {
+        you('dialog.ask_work');
+        if (!job[jobKey]) {
+          const item = rng.pick(['ferrite', 'carbon', 'cobalt', 'ice', 'biosample']);
+          const n = item === 'biosample' ? rng.int(1, 3) : rng.int(8, 25);
+          job[jobKey] = { item, n, reward: Math.round(n * (item === 'biosample' ? 60 : item === 'cobalt' ? 14 : 8) * 1.4), state: 'offered' };
+        }
+        const j = job[jobKey];
+        const params = { n: j.n, item: t(`item.${j.item}`), credits: j.reward };
+        say(j.state === 'done' ? 'dialog.work_none' : j.state === 'active' ? 'dialog.work_waiting' : 'dialog.work_offer', params);
+      } else if (topic === 'accept') {
+        const j = job[jobKey];
+        you('dialog.work_accept');
+        j.state = 'active';
+        say('dialog.work_deal');
+        g.hud.toast('hud.quest_accepted', 'accent');
+      } else if (topic === 'deliver') {
+        const j = job[jobKey];
+        you('dialog.work_deliver', { n: j.n, item: t(`item.${j.item}`) });
+        st.removeItem(j.item, j.n);
+        st.credits += j.reward;
+        st.reputation.veyari = (st.reputation.veyari || 0) + 4;
+        j.state = 'done';
+        say('dialog.work_thanks');
+        g.hud.toast('hud.quest_done', 'accent', { credits: j.reward });
+        g.audio.play('buy');
       }
     }
-    if (c.profession === 'merchant') options.push({ key: 'dialog.trade', action: () => this.game.menus.open('shop_market', { market: this.game.market(`${this.game.player.body.id}/city`) }) });
-    if (c.profession === 'mechanic' || c.profession === 'engineer') options.push({ key: 'dialog.equipment', action: () => this.game.menus.open('shop_equipment', { market: this.game.market(`${this.game.player.body.id}/city`) }) });
-    options.push({ key: 'dialog.rumor', action: () => this.game.hud.radio(`rumor.${Math.floor(Math.random() * 6)}`, {}) });
-    options.push({ key: 'dialog.hire', action: () => this.game.hud.toast('hud.no_crew_berth', 'warn') });
-    st.reputation.veyari = (st.reputation.veyari || 0) + 0.2;
-    st.addXP('diplomacy', 1);
+    // Topics the player can raise next.
+    const options = [];
+    const story = c.story;
+    const q = st.quests;
+    if (story && !topic) {
+      if (story.id === 'lost_drone') {
+        if (q.done.lost_drone) say('quest.lost_drone.thanks');
+        else if (q.active.lost_drone && !st.count('drone_part')) say('quest.lost_drone.remind');
+      } else if (story.id === 'sample_request') {
+        if (q.done.sample_request) say('quest.sample.thanks');
+        else if (st.count('cobalt') < story.count) say('quest.sample.ask', { n: story.count });
+      } else if (story.id === 'moon_signal') say('quest.moon_signal');
+      else if (story.id === 'old_pilot') say('quest.old_pilot');
+      else if (story.id === 'merchant_price') say('quest.merchant_tip');
+    }
+    if (story?.id === 'lost_drone' && !q.done.lost_drone) {
+      if (st.count('drone_part')) options.push({ key: 'quest.lost_drone.return', action: () => { this.completeDrone(npc); conv.history.push({ who: 'npc', text: t('quest.lost_drone.thanks') }); } });
+      else if (!q.active.lost_drone) options.push({ key: 'quest.lost_drone.accept', action: () => { q.active.lost_drone = { t: st.time }; g.hud.toast('hud.quest_accepted', 'accent'); } });
+    }
+    if (story?.id === 'sample_request' && !q.done.sample_request && st.count('cobalt') >= story.count) {
+      options.push({ key: 'quest.sample.deliver', action: () => { st.removeItem('cobalt', story.count); st.credits += story.reward; q.done.sample_request = true; st.reputation.veyari += 6; g.hud.toast('hud.quest_done', 'accent', { credits: story.reward }); } });
+    }
+    const j = job[jobKey];
+    if (j?.state === 'offered' && topic === 'work') options.push({ topic: 'accept', key: 'dialog.work_accept' });
+    if (j?.state === 'active' && st.count(j.item) >= j.n) options.push({ topic: 'deliver', key: 'dialog.work_deliver', params: { n: j.n, item: t(`item.${j.item}`) } });
+    for (const tp of ['about', 'planet', 'city', 'work', 'tip', 'rumor', 'haggle']) {
+      if (tp !== 'tip' && tp !== 'rumor' && tp !== 'work' && conv.asked.has(tp)) continue;
+      if (tp === 'haggle' && (conv.asked.has('haggle') || !['merchant', 'mechanic', 'engineer', 'cook'].includes(c.profession))) continue;
+      if (tp === 'city' && !body?.city) continue;
+      options.push({ topic: tp, key: tp === 'rumor' ? 'dialog.rumor' : tp === 'haggle' ? 'dialog.haggle' : `dialog.ask_${tp}` });
+    }
+    if (c.profession === 'merchant') options.push({ key: 'dialog.trade', action: () => g.menus.open('shop_market', { market: g.market(`${body.id}/city`) }) });
+    if (c.profession === 'mechanic' || c.profession === 'engineer') options.push({ key: 'dialog.equipment', action: () => g.menus.open('shop_equipment', { market: g.market(`${body.id}/city`) }) });
+    options.push({ key: 'dialog.bye', action: () => g.menus.closeAll() });
     npc.talkTimer = 8;
-    return { lines, options };
+    conv.options = options;
+    return conv;
   }
 
   completeDrone() {

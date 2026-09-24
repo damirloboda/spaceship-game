@@ -1,6 +1,8 @@
 // All menu panels. Kept compact on purpose: the game is primary, UI secondary.
 import * as THREE from 'three';
 import { t, LANGUAGES, getLanguage } from '../i18n/index.js';
+import { ItemViewer } from './itemViewer.js';
+import { CHARACTER_MODELS as CHARACTER_PORTRAITS } from '../render/modelLib.js';
 import { h, fmtDistance, bar } from './dom.js';
 import { ITEMS, itemDef } from '../game/items.js';
 import { PC_PRESETS, MOBILE_PRESETS, saveSettings } from '../config/settings.js';
@@ -527,9 +529,35 @@ export class Menus {
       const act = sellOnly
         ? [this.btn('shop.sell1', () => this.trade('sell', market, id, 1), { disabled: !have }), this.btn('shop.sellall', () => this.trade('sell', market, id, have), { disabled: !have })]
         : [owned ? h('span', { class: 'muted' }, t('shop.owned')) : this.btn('shop.buy', () => this.trade('buy', market, id, 1), { disabled: st.credits < price })];
-      return h('div', { class: 'shoprow' }, this.itemChip(id), h('span', { class: 'muted' }, have ? `×${have}` : ''), h('b', {}, `◇ ${price}`), ...act);
+      const sel = this.current?.data?.sel === id;
+      return h('div', { class: `shoprow ${sel ? 'sel' : ''}`, onclick: (e) => { if (e.target.closest('button')) return; this.current.data.sel = id; this.showItem(id); this.el?.querySelectorAll?.('.shoprow.sel').forEach((r) => r.classList.remove('sel')); e.currentTarget.classList.add('sel'); } }, this.itemChip(id), h('span', { class: 'muted' }, have ? `×${have}` : ''), h('b', {}, `◇ ${price}`), ...act);
     });
     return rows;
+  }
+
+  // 3D showroom above the buy list: the selected item turns on a pedestal.
+  showroom(id) {
+    if (!this.viewer) {
+      try { this.viewer = new ItemViewer(); } catch { this.viewer = { ok: false }; }
+    }
+    if (!this.viewer.ok) return '';
+    const d = itemDef(id);
+    const box = h('div', { class: 'showroom' }, this.viewer.canvas,
+      h('div', { class: 'showroom-cap' }, h('b', {}, t(`item.${id}`)), h('span', { style: { color: d.color } }, d.glyph)));
+    requestAnimationFrame(() => this.viewer.show(id));
+    this.showroomCap = box.lastChild;
+    return box;
+  }
+
+  showItem(id) {
+    if (!this.viewer?.ok) return;
+    this.viewer.show(id);
+    if (this.showroomCap) {
+      const d = itemDef(id);
+      this.showroomCap.firstChild.textContent = t(`item.${id}`);
+      this.showroomCap.lastChild.textContent = d.glyph;
+      this.showroomCap.lastChild.style.color = d.color;
+    }
   }
 
   trade(side, market, id, n) {
@@ -552,6 +580,7 @@ export class Menus {
     return this.panel(titleKey, [
       h('div', { class: 'credits big' }, `◇ ${g.state.credits.toLocaleString('en-US')}`, h('span', { class: 'muted' }, ` · ${t('shop.rep')}: ${t(`rep.${reputationTier(g.state.reputation.veyari || 0)}`)}`)),
       h('div', { class: 'tabs' }, (buyIds.length ? ['buy'] : []).concat(sell ? ['sell'] : []).map((tb) => h('button', { class: tab === tb ? 'on' : '', onclick: () => { this.current.data.tab = tb; this.refresh(); } }, t(`shop.${tb}`)))),
+      tab === 'buy' && buyIds.length ? this.showroom(this.current.data.sel && buyIds.includes(this.current.data.sel) ? this.current.data.sel : buyIds[0]) : '',
       h('div', { class: 'shoplist' }, tab === 'buy' ? this.shopList(market, buyIds) : sellIds.length ? this.shopList(market, sellIds, { sellOnly: true }) : h('p', { class: 'muted' }, t('shop.nothing_to_sell'))),
     ], { wide: true });
   }
@@ -629,13 +658,30 @@ export class Menus {
     const g = this.game;
     const npc = d.npc;
     const c = npc.c;
-    if (!d.conv) d.conv = g.director.dialogFor(npc);
+    if (!d.conv) { d.conv = g.director.dialogFor(npc); d.shown = 0; }
     const civ = CIVILIZATIONS.find((x) => x.id === c.civ);
+    const portrait = npc.anim ? `assets/ui/char-${Math.max(0, CHARACTER_PORTRAITS.indexOf(npc.anim.name))}.jpg` : null;
+    const lines = d.conv.history.map((l, i) => {
+      const fresh = i >= (d.shown || 0);
+      return h('div', { class: `bubble ${l.who}${fresh ? ' fresh' : ''}`, style: fresh ? { animationDelay: `${(i - d.shown) * 0.35}s` } : {} },
+        l.who === 'you' ? h('b', {}, g.state.profile.name) : '', h('span', {}, l.text));
+    });
+    d.shown = d.conv.history.length;
+    const chat = h('div', { class: 'dialog-lines chat' }, lines);
+    requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+    const ask = (o) => {
+      if (o.topic) d.conv = g.director.dialogFor(npc, o.topic, d.conv);
+      else { o.action(); if (this.current?.name !== 'dialog') return; d.conv = g.director.dialogFor(npc, '__refresh', d.conv); }
+      g.audio.play('ui');
+      this.refresh();
+    };
     return this.panel('', [
-      h('div', { class: 'npc-head' }, h('div', { class: 'npc-avatar', style: { background: `rgb(${c.color.map((v) => Math.round(v * 255)).join(',')})` } }), h('div', {}, h('h3', {}, c.name), h('div', { class: 'muted' }, `${t(`npcprof.${c.profession}`)} · ${civ?.name || ''} · ${t(`personality.${c.personality}`)}`))),
-      h('div', { class: 'dialog-lines' }, d.conv.lines.map((l) => h('p', {}, `“${l}”`))),
-      h('div', { class: 'menu-col' }, d.conv.options.map((o) => this.btn(o.key, () => { o.action(); if (this.current?.name === 'dialog') { d.conv = g.director.dialogFor(npc); this.refresh(); } }))),
-    ], { titleText: t('dialog.title') });
+      h('div', { class: 'npc-head' },
+        portrait ? h('img', { class: 'npc-portrait', src: portrait, alt: '' }) : h('div', { class: 'npc-avatar', style: { background: `rgb(${c.color.map((v) => Math.round(v * 255)).join(',')})` } }),
+        h('div', {}, h('h3', {}, c.name), h('div', { class: 'muted' }, `${t(`npcprof.${c.profession}`)} · ${civ?.name || ''} · ${t(`personality.${c.personality}`)}`))),
+      chat,
+      h('div', { class: 'dialog-options' }, d.conv.options.map((o) => h('button', { class: `dopt ${o.topic ? '' : 'act'}`, onclick: () => ask(o) }, h('i', {}, '›'), t(o.key, o.params)))),
+    ], { titleText: t('dialog.title'), wide: true });
   }
 
   // ---------------- ship panels ----------------

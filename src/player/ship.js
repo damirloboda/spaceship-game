@@ -2,6 +2,7 @@
 // Lightbreak (in-system cruise and interstellar jumps), manual/auto/emergency
 // landing, docking, autopilot, crash damage and hazard handling.
 import * as THREE from 'three';
+import { Particles } from '../render/jetpackModel.js';
 import { buildShip, GEAR_HEIGHT, RAMP_OPEN, RAMP_CLOSED } from '../render/shipModel.js';
 import { FLIGHT } from '../game/shipSystems.js';
 
@@ -113,6 +114,11 @@ export class Ship {
     const inAtmo = this.inAtmosphere();
     const clear = game.universe.clearOfWells(world);
     const boost = piloting && input.held('boost') && this.lb.phase === 'none';
+    // Empty Nitro + a tank in the hold: swap it in automatically on boost.
+    if (boost && input.pressed('boost') && sys.nitro.installed && sys.nitro.charge < 2 && this.game.state.combined.has('nitro_cell')) {
+      const r = sys.refillNitro(this.game.state.combined);
+      if (r.ok) { this.game.hud.toast('hud.nitro_refilled', 'accent'); this.game.audio.play('ui'); }
+    }
     const res = sys.update(dt, { throttle: this.throttle, boost, inAtmosphere: inAtmo, clearOfWells: clear });
     this.overdrive = res.overdrive;
     if (res.lightbreakReady && !this.lbReadyAnnounced) {
@@ -512,6 +518,54 @@ export class Ship {
     n.canister.visible = this.systems.nitro.installed;
     this.shake = Math.max(0, this.shake - dt * 2);
     if (this.docked) this.updateDockAnim(dt);
+    this.updateFx(dt, thrust, flying);
+  }
+
+  // Navigation lights, strobe, engine glow on the ground, landing dust and
+  // wingtip vapour trails.
+  updateFx(dt, thrust, flying) {
+    const m = this.model;
+    const t = (this.fxT = (this.fxT || 0) + dt);
+    const blink = (t % 1.4) < 0.12;
+    for (const l of m.navLights || []) l.scale.setScalar(blink ? 1.8 : 1);
+    if (m.strobe) m.strobe.visible = flying && (t % 1.1) < 0.06;
+    if (m.engineLight) m.engineLight.intensity = flying ? Math.min(40, thrust * 18) * (0.9 + Math.random() * 0.2) : 0;
+    const frame = this.root.parent;
+    if (!frame) return;
+    if (!this.fx) {
+      this.fx = { dust: new Particles(260), trail: new Particles(200, { additive: true }), acc: 0 };
+    }
+    const fx = this.fx;
+    if (fx.dust.points.parent !== frame) frame.add(fx.dust.points, fx.trail.points);
+    const up = this.body ? this.root.position.clone().normalize() : new THREE.Vector3(0, 1, 0);
+    fx.acc += dt;
+    const step = 1 / 40;
+    while (fx.acc > step) {
+      fx.acc -= step;
+      // Dust blasted off the ground near take-off and landing.
+      if (this.body && flying && this.altitude < 35 && thrust > 0.1) {
+        const k = 1 - this.altitude / 35;
+        for (let i = 0; i < 3; i++) {
+          if (Math.random() > k) continue;
+          const a = Math.random() * Math.PI * 2;
+          const side = new THREE.Vector3(Math.cos(a), Math.sin(a * 1.3), Math.sin(a)).cross(up).normalize();
+          const ground = this.root.position.clone().addScaledVector(up, -(this.altitude + GEAR_HEIGHT)).addScaledVector(side, 4 + Math.random() * 6);
+          fx.dust.emit(ground, side.multiplyScalar(10 + Math.random() * 12).addScaledVector(up, 1 + Math.random() * 2),
+            { color: [0.7, 0.64, 0.55], size: 2 + Math.random() * 2, life: 2 + Math.random() * 1.5, grow: 3, drag: 1.4 });
+        }
+      }
+      // Wingtip vapour in thick air at speed.
+      const air = this.body && this.body.airDensity ? this.body.airDensity(this.root.position) : 0;
+      if (air > 0.3 && this.speed > 120) {
+        for (const x of [-16.6, 16.6]) {
+          const p = this.root.localToWorld(new THREE.Vector3(x, 0.2, 12));
+          frame.worldToLocal(p);
+          fx.trail.emit(p, new THREE.Vector3(), { color: [0.55, 0.6, 0.65], size: 0.6, life: 0.6, grow: 2 });
+        }
+      }
+    }
+    fx.dust.update(dt, up.clone().multiplyScalar(0.4));
+    fx.trail.update(dt, new THREE.Vector3());
   }
 
   toSave() {

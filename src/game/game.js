@@ -34,7 +34,7 @@ import { TouchControls } from '../ui/touch.js';
 import { PhotoMode } from '../ui/photo.js';
 import { Environment } from '../render/environment.js';
 import { atmosphereColor, GradeShader } from '../render/shaders.js';
-import { loadTerrainTextures } from '../render/textures.js';
+import { loadTerrainTextures, terrainTime } from '../render/textures.js';
 import { AsteroidFields } from '../render/asteroids.js';
 import { Weapons } from './weapons.js';
 
@@ -720,6 +720,7 @@ export class Game {
     const focus = this.player?.worldPosition(new THREE.Vector3()) || camWorld;
     uni.update(dt, this.camera, this.mode === 'pilot' || this.mode === 'docked' ? camWorld : focus, active);
     const sunWorld = new THREE.Vector3(0, 0, 0);
+    terrainTime.value += dt;
     let daylight = 0, inAtmo = 0, altFrac = 1;
     for (const b of uni.bodies) {
       const local = b.spin.worldToLocal(camWorld.clone());
@@ -733,6 +734,12 @@ export class Game {
       if (b.waterMaterial) b.waterMaterial.userData.uniforms.uTime.value += dt;
       // Sun direction in this body's frames.
       const sunSpin = b.spin.worldToLocal(sunWorld.clone()).normalize();
+      if (b.waterMaterial) {
+        const wu = b.waterMaterial.userData.uniforms;
+        wu.uCamL.value.copy(local);
+        wu.uSunL.value.copy(sunSpin);
+        wu.uDay.value = THREE.MathUtils.smoothstep(sunSpin.dot(local.clone().normalize()), -0.1, 0.25);
+      }
       const sunAnchor = b.anchor.worldToLocal(sunWorld.clone()).normalize();
       if (b.atmo) {
         const u = b.atmoMaterial.uniforms;
@@ -815,6 +822,17 @@ export class Game {
       fwdA.normalize().addScaledVector(upA, 0.03).normalize();
       const sky = atmosphereColor(u, camA, fwdA, this.fogSky || (this.fogSky = new THREE.Color()));
       const zenith = atmosphereColor(u, camA, upA, this.zenithSky || (this.zenithSky = new THREE.Color()));
+      if (active.waterMaterial) {
+        // The ocean mirrors this sky: horizon and zenith colours, and the
+        // colour of the light around the sun (orange at sunset).
+        const wu = active.waterMaterial.userData.uniforms;
+        wu.uSkyH.value.copy(sky);
+        wu.uSkyZ.value.copy(zenith);
+        const sunA = u.uSun.value;
+        const near = atmosphereColor(u, camA, sunA.clone().addScaledVector(upA, 0.02).normalize(), wu.uSunC.value);
+        const nl = Math.max(near.r, near.g, near.b, 1e-4);
+        near.multiplyScalar(Math.min(1, 2.5 / nl));
+      }
       sky.r = Math.max(sky.r, 0.012); sky.g = Math.max(sky.g, 0.016); sky.b = Math.max(sky.b, 0.03);
       sky.lerp(new THREE.Color(0.32, 0.33, 0.36).multiplyScalar(0.3 + daylight * 0.7), this.weather.stormAmount * 0.6);
       fog.color.copy(sky);

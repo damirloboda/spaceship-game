@@ -77,8 +77,13 @@ export function texture(name, { srgb = false, repeat = 1 } = {}) {
 
 // Patches a terrain MeshStandardMaterial with triplanar detail textures,
 // triplanar normal mapping and per-layer roughness.
-export function applyTerrainDetail(material, { strength = 1, tile = 3.2 } = {}) {
+// Shared clock for animated terrain effects (sea-floor caustics).
+export const terrainTime = { value: 0 };
+
+export function applyTerrainDetail(material, { strength = 1, tile = 3.2, seaRadius = 0 } = {}) {
   const uniforms = {
+    uTTime: terrainTime,
+    uSeaR: { value: seaRadius },
     uDetail: { value: terrainTextures.detail },
     uNormalArr: { value: terrainTextures.normal },
     uDetailOn: { value: terrainTextures.ready ? 1 : 0 },
@@ -106,9 +111,23 @@ export function applyTerrainDetail(material, { strength = 1, tile = 3.2 } = {}) 
         uniform float uTile;
         uniform float uStrength;
         uniform mat3 normalMatrix;
+        uniform float uTTime;
+        uniform float uSeaR;
         varying vec3 vLpos;
         varying vec4 vLayers;
         varying vec3 vLnormal;
+        // Sunlight focused by the waves above: dancing caustic web.
+        float caustic(vec2 p, float t) {
+          vec2 q = p;
+          float c = 0.0;
+          for (int i = 0; i < 4; i++) {
+            float fi = float(i) + 1.0;
+            q = p + vec2(cos(t * 0.53 * fi - q.x) + sin(t * 0.37 * fi + q.y), sin(t * 0.47 * fi - q.y) + cos(t * 0.29 * fi + q.x));
+            c += 1.0 / length(vec2(p.x / (sin(q.x + t) * 0.9), p.y / (cos(q.y + t) * 0.9)));
+          }
+          c = 1.17 - pow(c / 4.0, 1.4);
+          return pow(abs(c), 8.0);
+        }
         vec3 triAlbedo(vec3 p, vec3 w, float layer) {
           vec3 a = texture(uDetail, vec3(p.zy, layer)).rgb * w.x;
           a += texture(uDetail, vec3(p.xz, layer)).rgb * w.y;
@@ -145,6 +164,18 @@ export function applyTerrainDetail(material, { strength = 1, tile = 3.2 } = {}) 
             detailN += lw * triNormal(dP, dW, dN, li);
           }
           diffuseColor.rgb *= mix(vec3(1.0), clamp(detailCol * 2.0, 0.0, 2.0), dFade * uStrength);
+        }
+        if (uSeaR > 0.0) {
+          float seaD = uSeaR - length(vLpos);
+          if (seaD > 0.05) {
+            vec3 ca = abs(normalize(vLpos));
+            vec2 cp = (ca.y > max(ca.x, ca.z) ? vLpos.xz : ca.x > ca.z ? vLpos.zy : vLpos.xy) * 0.35;
+            float cs = caustic(mod(cp, 6.2831853 * 8.0), uTTime * 0.6);
+            float cFade = exp(-seaD * 0.12) * smoothstep(0.05, 0.6, seaD) * (1.0 - smoothstep(60.0, 220.0, length(vViewPosition)));
+            // Water tints the sea floor blue-green with depth.
+            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.45, 0.75, 0.8), 1.0 - exp(-seaD * 0.08));
+            diffuseColor.rgb += vec3(0.75, 0.95, 0.9) * clamp(cs, 0.0, 1.2) * 0.35 * cFade;
+          }
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, dot(vLayers, vec4(0.92, 0.8, 0.95, 0.5)), 0.7);`)

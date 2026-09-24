@@ -155,6 +155,16 @@ export class Scatter {
     };
   }
 
+  paved(d) {
+    const R = this.surface.radius;
+    for (const z of this.surface.flatZones || []) {
+      if (z.radius < 40) continue;
+      const c = d[0] * z.x + d[1] * z.y + d[2] * z.z;
+      if (Math.acos(Math.min(1, c)) * R < z.radius * 0.92) return true;
+    }
+    return false;
+  }
+
   onNodeCreate(node) {
     if (node.level === this.floraLevel || node.level === this.depositLevel) this.pending.push(node);
   }
@@ -183,6 +193,8 @@ export class Scatter {
         cubeToSphere(node.face, node.u0 + rng.next() * node.size, node.v0 + rng.next() * node.size, d);
         const h = s.heightAt(d[0], d[1], d[2]);
         if (s.hasOcean && h < 1.5) continue;
+        // Nothing grows on city streets, pads or ruins.
+        if (this.paved(d)) continue;
         const biome = s.biomeAt(d[0], d[1], d[2], h, 0);
         if (BARE_BIOMES.has(biome) && rng.next() > 0.15) continue;
         const cands = this.species.filter((sp) => sp.pref.has(biome));

@@ -81,6 +81,17 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   colour in the view direction; filmic colour grade with vignette and grain.
 - **Grass**: tens of thousands of wind-animated grass clumps around the player,
   coloured by biome.
+- **Ocean**: Gerstner waves, scrolling ripple normals, depth-based absorption
+  (turquoise shallows, deep blue), see-through shallows, shore surf and crest
+  foam, sub-surface glow, a Fresnel mirror of the real sky with a glittering
+  sun path, and dancing caustics on the sea floor.
+- **Jetpack**: carbon and chrome pack with glowing thrusters, unfolding fins,
+  fuel LEDs, a two-layer plasma flame, a light that washes the ground, sparks,
+  smoke trails and ground dust; the pilot leans into the flight.
+- **Trade & talk**: shops show the selected item turning on a 3D pedestal;
+  Nitro tanks are sold for coins and swap in automatically when Nitro runs
+  dry. Conversations are chats with topics (the person, the planet, the city,
+  advice, rumours, haggling for a discount) and per-citizen delivery jobs.
 - **Graphics**: photo-scanned CC0 textures (Poly Haven) blended triplanar over
   procedural biomes with normal mapping, image-based lighting (reflections of
   the sky or the galaxy), animated ocean waves with foam, a hand-made fighter

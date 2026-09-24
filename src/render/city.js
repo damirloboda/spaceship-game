@@ -6,7 +6,8 @@ import { RNG, hashString } from '../core/rng.js';
 import { tangentFrame, offsetOnSphere } from '../world/planetGen.js';
 import { generateCitizens, CIVILIZATIONS } from '../world/civGen.js';
 import { colorize, merge, humanoidModel, animateHumanoid } from './models.js';
-import { animatedInstance, CHARACTER_MODELS, addHelmet } from './modelLib.js';
+import { animatedInstance, CHARACTER_MODELS, addHelmet, staticParts } from './modelLib.js';
+import { applyHullDetail } from './textures.js';
 import { orientOnSurface } from './fauna.js';
 
 const LAYOUT = [
@@ -106,6 +107,24 @@ export class City {
           const dome = new THREE.SphereGeometry(rr, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
           dome.translate(0, y, 0);
           put(wall, dome, c1, x, z);
+          // Balcony rings, a rooftop antenna and solar panels.
+          for (let t = 1; t < tiers; t++) {
+            const ring = new THREE.TorusGeometry(r * Math.pow(0.82, t) * 0.95, 0.12, 5, 24);
+            ring.rotateX(Math.PI / 2); ring.translate(0, (h / tiers) * t + 0.1, 0);
+            put(wall, ring, [0.3, 0.32, 0.36], x, z);
+          }
+          const mast = new THREE.CylinderGeometry(0.08, 0.14, 4, 6);
+          mast.translate(rr * 0.3, y + rr + 1.6, 0);
+          put(wall, mast, [0.35, 0.36, 0.4], x, z);
+          const beacon = new THREE.SphereGeometry(0.22, 8, 6);
+          beacon.translate(rr * 0.3, y + rr + 3.7, 0);
+          put(glow, beacon, null, x, z);
+          for (const sgn of [-1, 1]) {
+            const panel = new THREE.BoxGeometry(rr * 0.8, 0.08, rr * 0.5);
+            panel.rotateX(-0.5 * sgn);
+            panel.translate(-rr * 0.2, y + rr * 0.55, sgn * rr * 0.45);
+            put(wall, panel, [0.12, 0.18, 0.35], x, z);
+          }
           break;
         }
         case 'market': {
@@ -203,10 +222,10 @@ export class City {
     }
     // Plaza paving and monument
     const pave = new THREE.RingGeometry(0.5, 50, 48, 8);
-    pave.rotateX(-Math.PI / 2); pave.translate(0, 0.08, 0);
+    pave.rotateX(-Math.PI / 2); pave.translate(0, 0.32, 0);
     wall.push(colorize(pave, [0.72, 0.68, 0.6]));
     const street = new THREE.RingGeometry(50, CITY_RADIUS, 64, 14);
-    street.rotateX(-Math.PI / 2); street.translate(0, 0.05, 0);
+    street.rotateX(-Math.PI / 2); street.translate(0, 0.26, 0);
     wall.push(colorize(street, [0.52, 0.5, 0.47]));
     const spire = new THREE.CylinderGeometry(0.4, 2.2, 22, 6);
     spire.translate(0, 11, 0);
@@ -246,9 +265,31 @@ export class City {
     glow.push(colorize(cab, [1, 1, 1]));
     this.colliders.push({ x: 30, z: padZ + 30, r: 3.2 });
 
-    const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05 });
-    this.glowMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x000000, emissive: new THREE.Color(1.0, 0.82, 0.5), emissiveIntensity: 0.2, roughness: 0.4 });
-    const glassMat = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.45, roughness: 0.05, metalness: 0.3 });
+    const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.12, envMapIntensity: 1.1, side: THREE.DoubleSide });
+    // Panel seams and weathering on every wall.
+    applyHullDetail(wallMat, { tile: 3.2, strength: 0.55 });
+    this.glowMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x0a0c10, emissive: new THREE.Color(1.0, 0.82, 0.5), emissiveIntensity: 0.2, roughness: 0.15, metalness: 0.4, envMapIntensity: 1.4 });
+    // Window grid: dark reflective glass by day, some panes lit at night.
+    const { east, up, north } = this.frame;
+    // Rows: east, up, north -> city-local axes for the window grid.
+    const cityBasis = new THREE.Matrix3().set(east[0], east[1], east[2], up[0], up[1], up[2], north[0], north[1], north[2]);
+    this.glowMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uCityBasis = { value: cityBasis };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform mat3 uCityBasis;\nvarying vec3 vWinPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWinPos = uCityBasis * position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWinPos;')
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          vec3 wc = vWinPos * vec3(0.9, 1.1, 0.9);
+          vec3 cell = floor(wc);
+          vec3 f = fract(wc);
+          float frame = step(0.12, f.y) * step(f.y, 0.88) * step(0.1, max(f.x, f.z)) * step(min(f.x, f.z), 0.9);
+          float lit = step(0.45, fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453));
+          totalEmissiveRadiance *= mix(0.25, 1.0, frame) * mix(0.35, 1.6, lit);`);
+    };
+    this.glowMat.customProgramCacheKey = () => 'city-windows';
+    const glassMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, transparent: true, opacity: 0.5, roughness: 0.04, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.8 });
     for (const [list, mat, shadows] of [[wall, wallMat, true], [glow, this.glowMat, false], [glass, glassMat, false]]) {
       if (!list.length) continue;
       const geo = merge(list);
@@ -260,6 +301,42 @@ export class City {
       this.group.add(mesh);
     }
     this.materials = [wallMat, this.glowMat, glassMat];
+    this.plantGardens();
+  }
+
+  // Photoscanned shrubs, ferns and flowers around buildings and the plaza.
+  plantGardens() {
+    const kinds = ['ph_shrub_04', 'ph_fern_02#0', 'ph_fern_02#2', 'ph_flower_gazania#0', 'ph_periwinkle_plant#0'];
+    const heights = [1.2, 0.8, 0.8, 0.3, 0.3];
+    const spots = kinds.map(() => []);
+    const rng = new RNG(this.rng.int(1, 1e9));
+    for (const b of this.buildings) {
+      const n = 3 + rng.int(0, 4);
+      for (let i = 0; i < n; i++) {
+        const a = rng.next() * Math.PI * 2, d = b.radius + 1.5 + rng.next() * 2;
+        spots[rng.int(0, kinds.length - 1)].push([b.x + Math.cos(a) * d, b.z + Math.sin(a) * d]);
+      }
+    }
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2;
+      spots[i % kinds.length].push([Math.cos(a) * 49, Math.sin(a) * 49]);
+    }
+    const up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), q = new THREE.Quaternion(), yaw = new THREE.Quaternion(), sc = new THREE.Vector3(), m = new THREE.Matrix4();
+    kinds.forEach((name, k) => {
+      const parts = staticParts(name);
+      if (!parts?.length || !spots[k].length) return;
+      const meshes = parts.map((part) => new THREE.InstancedMesh(part.geometry, part.material, spots[k].length));
+      spots[k].forEach(([x, z], i) => {
+        this.toLocal(x, z, -0.05, p);
+        q.setFromUnitVectors(up, p.clone().normalize());
+        yaw.setFromAxisAngle(up, rng.next() * Math.PI * 2);
+        q.multiply(yaw);
+        const s = heights[k] * (0.8 + rng.next() * 0.5);
+        m.compose(p, q, sc.set(s, s, s));
+        for (const mesh of meshes) mesh.setMatrixAt(i, m);
+      });
+      for (const mesh of meshes) { mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; this.group.add(mesh); }
+    });
   }
 
   // Map flat city-space geometry onto the curved planet surface.
@@ -342,7 +419,22 @@ export class City {
         n.tx = dest.x + Math.cos(a) * Math.random() * spread;
         n.tz = dest.z + Math.sin(a) * Math.random() * spread;
       }
-      if (n.talkTimer > 0) { n.talkTimer -= dt; n.speed = 0; }
+      // Citizens stop, turn and greet a player who walks up to them.
+      if (playerLocal && n.talkTimer <= 0) {
+        this.toLocal(n.x, n.z, 0, tmp);
+        const dp = tmp.distanceTo(playerLocal);
+        if (dp < 5 && !n.greeted) { n.greeted = true; n.greetT = 2.4; }
+        if (dp > 12) n.greeted = false;
+        if (n.greetT > 0) {
+          n.greetT -= dt;
+          const f = this.frame, rel = playerLocal.clone().sub(tmp);
+          const ex = rel.x * f.east[0] + rel.y * f.east[1] + rel.z * f.east[2];
+          const nz = rel.x * f.north[0] + rel.y * f.north[1] + rel.z * f.north[2];
+          n.heading = Math.atan2(ex, nz);
+        }
+      }
+      if (n.greetT > 0) { n.speed = 0; }
+      else if (n.talkTimer > 0) { n.talkTimer -= dt; n.speed = 0; }
       else {
         let dx = n.tx - n.x, dz = n.tz - n.z;
         const d = Math.hypot(dx, dz);
@@ -376,7 +468,7 @@ export class City {
       orientOnSurface(n.model, up, fwd);
       if (n.anim) {
         const near = !playerLocal || tmp.distanceToSquared(playerLocal) < 250 * 250;
-        n.anim.play(n.talkTimer > 0 ? 'wave' : n.speed > 0.1 ? 'walk' : 'idle', 0.3, n.speed > 0.1 ? n.speed / 1.6 : 1);
+        n.anim.play(n.talkTimer > 0 || n.greetT > 0 ? 'wave' : n.speed > 0.1 ? 'walk' : 'idle', 0.3, n.speed > 0.1 ? n.speed / 1.6 : 1);
         n.animAcc = (n.animAcc || 0) + dt;
         if (near || n.animAcc > 0.2) { n.anim.update(n.animAcc); n.animAcc = 0; }
       } else animateHumanoid(n.model, n.t, n.speed);

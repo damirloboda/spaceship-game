@@ -307,7 +307,8 @@ export function animatedInstance(name, size, { byLength = false, yaw = CREATURE_
     attack: find(/bite_front/i, /attack/i, /punch/i, /bite/i, /shoot/i),
     death: find(/^death$/i, /death/i),
     jump: find(/^jump$/i, /jump/i),
-    wave: find(/wave/i, /yes/i),
+    wave: find(/wave/i, /hello/i, /yes/i),
+    land: find(/jump_land/i, /landing/i),
     sit: find(/sitting/i, /sit/i),
   };
   for (const [k, re] of Object.entries(prefer)) clips[k] = find(re) || clips[k];
@@ -321,7 +322,7 @@ export function animatedInstance(name, size, { byLength = false, yaw = CREATURE_
       if (!a) return;
       a.timeScale = timeScale;
       if (a === current) return;
-      if (state === 'death' || state === 'jump' || state === 'wave') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      if (state === 'death' || state === 'jump' || state === 'wave' || state === 'land') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
       a.reset().play();
       if (current) current.crossFadeTo(a, fade, false);
       current = a;

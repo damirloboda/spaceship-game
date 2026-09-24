@@ -286,70 +286,194 @@ export function createRingMaterial({ inner, outer, color, planetRadius, seed = 1
 
 // Animated ocean: vertex waves (displaced along the planet normal, fading
 // with distance), analytic wave normals, fine ripples and PBR reflections.
-export function createWaterMaterial(color = [0.03, 0.18, 0.3]) {
+// Tileable ripple normal map built from integer-frequency sine waves.
+let rippleTex = null;
+function rippleNormalTexture(size = 256) {
+  if (rippleTex) return rippleTex;
+  const waves = [];
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 28; i++) {
+    const kx = Math.round((rnd() * 2 - 1) * (2 + i * 0.7)), ky = Math.round((rnd() * 2 - 1) * (2 + i * 0.7));
+    if (!kx && !ky) continue;
+    waves.push({ kx, ky, a: 1 / (1 + Math.hypot(kx, ky) * 0.6), p: rnd() * Math.PI * 2 });
+  }
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let dx = 0, dy = 0;
+      for (const w of waves) {
+        const ph = (2 * Math.PI * (w.kx * x + w.ky * y)) / size + w.p;
+        const c = Math.cos(ph) * w.a;
+        dx += c * w.kx; dy += c * w.ky;
+      }
+      const n = new THREE.Vector3(-dx * 0.08, -dy * 0.08, 1).normalize();
+      const o = (y * size + x) * 4;
+      data[o] = (n.x * 0.5 + 0.5) * 255; data[o + 1] = (n.y * 0.5 + 0.5) * 255; data[o + 2] = (n.z * 0.5 + 0.5) * 255; data[o + 3] = 255;
+    }
+  }
+  rippleTex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  rippleTex.wrapS = rippleTex.wrapT = THREE.RepeatWrapping;
+  rippleTex.magFilter = THREE.LinearFilter;
+  rippleTex.minFilter = THREE.LinearMipmapLinearFilter;
+  rippleTex.generateMipmaps = true;
+  rippleTex.anisotropy = 8;
+  rippleTex.needsUpdate = true;
+  return rippleTex;
+}
+
+// Ocean: 6 Gerstner-style waves in the vertex shader, two scrolling ripple
+// normal layers, depth-based absorption (turquoise shallows, deep blue),
+// see-through shallows, shore and crest foam, sun-lit subsurface glow on
+// wave crests and PBR sun glints / sky reflections from the standard model.
+export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
+  const deep = new THREE.Color(color[0], color[1], color[2]);
   const mat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color[0], color[1], color[2]),
-    roughness: 0.06,
+    color: 0xffffff,
+    roughness: 0.035,
     metalness: 0.0,
     transparent: true,
-    opacity: 0.9,
-    envMapIntensity: 1.4,
+    opacity: 1,
+    envMapIntensity: 0.25,
   });
-  const uniforms = { uTime: { value: 0 } };
+  const uniforms = {
+    uTime: { value: 0 },
+    uRipple: { value: rippleNormalTexture() },
+    uDeep: { value: deep },
+    uShallow: { value: new THREE.Color(0.05, 0.42, 0.44).lerp(deep, 0.25) },
+    uSunL: { value: new THREE.Vector3(0, 1, 0) },
+    uCamL: { value: new THREE.Vector3() },
+    uDay: { value: 1 },
+    uSkyH: { value: new THREE.Color(0.6, 0.75, 0.9) },
+    uSkyZ: { value: new THREE.Color(0.15, 0.35, 0.8) },
+    uSunC: { value: new THREE.Color(1, 0.95, 0.85) },
+  };
   mat.userData.uniforms = uniforms;
   const WAVES = /* glsl */`
-    const int NW = 4;
+    const int NW = 6;
     vec3 waveDir(int i) {
       if (i == 0) return normalize(vec3(0.8, 0.3, 0.5));
       if (i == 1) return normalize(vec3(-0.4, 0.7, 0.6));
       if (i == 2) return normalize(vec3(0.2, -0.6, 0.9));
-      return normalize(vec3(-0.9, -0.2, 0.3));
+      if (i == 3) return normalize(vec3(-0.9, -0.2, 0.3));
+      if (i == 4) return normalize(vec3(0.5, 0.8, -0.3));
+      return normalize(vec3(-0.3, -0.9, -0.4));
     }
-    float waveK(int i) { return i == 0 ? 0.11 : i == 1 ? 0.17 : i == 2 ? 0.29 : 0.47; }
-    float waveA(int i) { return i == 0 ? 0.55 : i == 1 ? 0.32 : i == 2 ? 0.16 : 0.08; }
+    float waveK(int i) { return i == 0 ? 0.09 : i == 1 ? 0.14 : i == 2 ? 0.23 : i == 3 ? 0.37 : i == 4 ? 0.61 : 0.97; }
+    float waveA(int i) { return i == 0 ? 0.6 : i == 1 ? 0.38 : i == 2 ? 0.2 : i == 3 ? 0.11 : i == 4 ? 0.055 : 0.03; }
   `;
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = uniforms.uTime;
+    Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
         uniform float uTime;
         attribute vec3 lpos;
+        attribute float wdepth;
         varying vec3 vWPos;
-        varying float vFoam;
+        varying float vCrest;
+        varying float vDepth;
+        varying vec3 vWN;
         ${WAVES}`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
         vec3 wN = normalize(objectNormal);
-        float wAmp = 1.0 - smoothstep(150.0, 900.0, length((modelViewMatrix * vec4(position, 1.0)).xyz));
+        float wAmp = (1.0 - smoothstep(150.0, 900.0, length((modelViewMatrix * vec4(position, 1.0)).xyz)));
+        // Waves calm down in the shallows so they break at the shore.
+        wAmp *= smoothstep(-0.5, 4.0, wdepth) * 0.8 + 0.2;
         vec3 wGrad = vec3(0.0);
+        vec3 wSide = vec3(0.0);
         float wH = 0.0;
         for (int i = 0; i < NW; i++) {
           vec3 d = waveDir(i);
+          d = normalize(d - wN * dot(d, wN));
           float k = waveK(i);
           float ph = dot(lpos, d) * k + uTime * sqrt(9.8 * k) * 1.1;
-          wH += waveA(i) * sin(ph);
-          wGrad += waveA(i) * k * cos(ph) * (d - wN * dot(d, wN));
+          float a = waveA(i);
+          wH += a * sin(ph);
+          wGrad += a * k * cos(ph) * d;
+          wSide += d * (a * 0.55) * cos(ph); // Gerstner: points bunch at crests
         }
-        wH *= wAmp; wGrad *= wAmp;
+        wH *= wAmp; wGrad *= wAmp; wSide *= wAmp;
         objectNormal = normalize(wN - wGrad);
-        vFoam = smoothstep(0.55, 0.95, wH);`)
+        vWN = objectNormal;
+        vCrest = smoothstep(0.35, 1.0, wH);
+        vDepth = wdepth;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        transformed += wN * wH;`)
+        transformed += wN * wH + wSide;`)
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = lpos;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWPos;\nvarying float vFoam;')
+      .replace('#include <common>', `#include <common>
+        uniform float uTime; uniform sampler2D uRipple; uniform vec3 uDeep; uniform vec3 uShallow;
+        uniform vec3 uSunL; uniform vec3 uCamL; uniform float uDay;
+        uniform vec3 uSkyH; uniform vec3 uSkyZ; uniform vec3 uSunC;
+        uniform mat3 normalMatrix;
+        vec3 wNL;
+        varying vec3 vWPos; varying float vCrest; varying float vDepth; varying vec3 vWN;
+        float wHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float wNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85, 0.92, 0.95), vFoam * 0.5);`)
+        // Planar coordinates on the local tangent plane for ripples and foam.
+        vec3 wUp = normalize(vWPos);
+        vec3 wT = normalize(cross(abs(wUp.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), wUp));
+        vec3 wB = cross(wUp, wT);
+        // Planar coordinates from fixed axes (the dominant one is dropped).
+        vec3 wA = abs(wUp);
+        vec2 wUV = wA.y > max(wA.x, wA.z) ? vWPos.xz : wA.x > wA.z ? vWPos.zy : vWPos.xy;
+        float wDist = length(vViewPosition);
+        vec3 V = normalize(uCamL - vWPos);
+        float depth = max(vDepth, 0.0);
+        // Absorption: light fades through water, turquoise first, then deep blue.
+        float shallowK = exp(-depth * 0.22);
+        vec3 waterCol = mix(uDeep, uShallow, shallowK);
+        // Subsurface glow where sunlight passes through wave crests.
+        float sunBack = pow(max(dot(-V, uSunL) * 0.5 + 0.5, 0.0), 3.0);
+        vec3 sss = uShallow * 0.9 * (vCrest * 0.9 + 0.04) * (0.25 + sunBack * 1.2) * uDay;
+        // Foam: breaking crests and bands washing onto the shore.
+        float n1 = wNoise(wUV * 0.35 + uTime * 0.07), n2 = wNoise(wUV * 1.3 - uTime * 0.11);
+        float crestFoam = smoothstep(0.6, 1.0, vCrest + (n1 - 0.5) * 0.5) * 0.55;
+        float shore = 1.0 - smoothstep(0.0, 2.2, vDepth);
+        float bands = smoothstep(0.55, 0.95, sin(vDepth * 5.0 - uTime * 1.4 + n1 * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.0, 1.6, vDepth));
+        float edge = 1.0 - smoothstep(0.0, 0.35, vDepth);
+        float foam = clamp(max(crestFoam, (bands * 0.9 + edge) * shore) * (0.55 + n2 * 0.6), 0.0, 1.0);
+        // Water's own albedo is dark: its colour comes from absorption, the
+        // sea floor showing through and reflections.
+        diffuseColor.rgb = mix(waterCol * 0.1, vec3(0.93, 0.97, 1.0), foam);
+        // Deep water is opaque; shallows show the sea floor; foam is solid.
+        float fres = pow(1.0 - clamp(dot(V, normalize(vWN)), 0.0, 1.0), 5.0);
+        diffuseColor.a = clamp(mix(0.96, 0.3, shallowK) + fres * 0.35 + foam, 0.0, 1.0);
+        diffuseColor.a *= smoothstep(-0.25, 0.05, vDepth) * 0.9 + 0.1;
+        totalEmissiveRadiance += sss * (1.0 - foam);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, 0.85, foam);`)
       .replace('#include <normal_fragment_maps>', /* glsl */`
         #include <normal_fragment_maps>
-        vec3 wp = vWPos * 0.9;
-        float r1 = sin(wp.x * 1.3 + uTime * 1.9) * cos(wp.z * 1.1 - uTime * 1.3);
-        float r2 = sin(wp.y * 2.9 - uTime * 2.4 + wp.x * 1.7) * 0.5;
-        float r3 = cos(wp.z * 3.7 + uTime * 2.1 + wp.y * 2.3) * 0.5;
-        float rf = 1.0 - smoothstep(20.0, 160.0, length(vViewPosition));
-        normal = normalize(normal + vec3(r1 + r2, r2 * r3, r3 - r1) * 0.05 * rf);
-      `);
+        {
+          float rf = 1.0 - smoothstep(30.0, 400.0, wDist);
+          vec3 r1 = texture2D(uRipple, wUV * 0.11 + vec2(uTime * 0.021, uTime * 0.013)).xyz * 2.0 - 1.0;
+          vec3 r2 = texture2D(uRipple, wUV * 0.37 - vec2(uTime * 0.034, -uTime * 0.027)).xyz * 2.0 - 1.0;
+          vec3 r3 = texture2D(uRipple, wUV * 0.023 + vec2(-uTime * 0.006, uTime * 0.009)).xyz * 2.0 - 1.0;
+          vec3 r4 = texture2D(uRipple, wUV * 0.0061 + vec2(uTime * 0.0023, -uTime * 0.0017)).xyz * 2.0 - 1.0;
+          vec2 slope = (r1.xy * 0.8 + r2.xy * 0.5) * rf + r3.xy * 0.55 + r4.xy * 0.45;
+          vec3 nL = normalize(normalize(vWN) - (wT * slope.x + wB * slope.y) * (1.0 - foam * 0.7));
+          wNL = nL;
+          normal = normalize(normalMatrix * nL);
+        }
+      `)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        {
+          // Mirror of the real sky (same colours as the atmosphere) with
+          // Fresnel, plus a glittering sun path.
+          vec3 R = reflect(-V, wNL);
+          float ru = max(dot(R, wUp), 0.0);
+          vec3 skyR = mix(uSkyH * 0.8, uSkyZ, pow(ru, 0.35));
+          // Microfacet shadowing keeps rough water from mirroring at grazing angles.
+          float F = 0.02 + 0.68 * pow(1.0 - max(dot(V, wNL), 0.0), 5.0);
+          float sd = max(dot(R, uSunL), 0.0);
+          float glint = pow(sd, 1200.0) * 90.0 + pow(sd, 90.0) * 2.0 + pow(sd, 12.0) * 0.12;
+          totalEmissiveRadiance += (skyR * F + uSunC * glint * (0.25 + F)) * (1.0 - foam) * (1.0 - smoothstep(-0.2, 0.3, -vDepth));
+        }`);
   };
-  mat.customProgramCacheKey = () => 'ocean-waves';
+  mat.customProgramCacheKey = () => 'ocean-waves-v2';
   return mat;
 }
 

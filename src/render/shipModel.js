@@ -301,7 +301,17 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
     exterior.add(shell);
   }
   // Engine glow and exhaust
-  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.6, 1.0).multiplyScalar(0.9), toneMapped: false });
+  // Nozzle glow: hot white core, blue plasma ring, dark cooled rim.
+  const gc = document.createElement('canvas');
+  gc.width = gc.height = 128;
+  const gx = gc.getContext('2d');
+  const grd = gx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, '#ffffff'); grd.addColorStop(0.25, '#d8f0ff'); grd.addColorStop(0.55, '#3a8dff');
+  grd.addColorStop(0.8, '#123a8a'); grd.addColorStop(0.92, '#0a0d14'); grd.addColorStop(1, '#2a2e36');
+  gx.fillStyle = grd; gx.fillRect(0, 0, 128, 128);
+  const glowTex = new THREE.CanvasTexture(gc);
+  glowTex.colorSpace = THREE.SRGBColorSpace;
+  const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, color: new THREE.Color(1.6, 1.6, 1.8), toneMapped: false });
   const flameMat = createExhaustMaterial([0.3, 0.62, 1.0]);
   const flames = [];
   for (const side of [-1, 1]) {
@@ -336,6 +346,13 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   const navG = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 4), new THREE.MeshBasicMaterial({ color: 0x20ff40 }));
   navG.position.set(15.3, 3.4, 9.5);
   exterior.add(navR, navG);
+  // Tail strobe and engine light (lights up the ground on take-off).
+  const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(6), toneMapped: false }));
+  strobe.position.set(0, 6.9, 16.8);
+  exterior.add(strobe);
+  const engineLight = new THREE.PointLight(0x7fb8ff, 0, 60, 1.5);
+  engineLight.position.set(0, 1.5, 20);
+  exterior.add(engineLight);
   if (shell) {
     // Engines of the hand-made hull sit further back and wider apart.
     // Two main engines in the tail plus two wing nacelles.
@@ -517,7 +534,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   ];
 
   return {
-    root, exterior, interior, shell, legacyHull: shell ? legacyHull : [], flames, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
+    root, exterior, interior, shell, legacyHull: shell ? legacyHull : [], flames, navLights: [navR, navG], strobe, engineLight, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
     nitro: { panel, doorPivot, canister, open: false, openT: 0 },
     cockpitEye: new THREE.Vector3(0, 1.62, -9.1),
     materials: [hullMat, canopyMat, glowMat, flameMat, gearMat, intMat, stripMat, windowMat, screenMat, coreMat],

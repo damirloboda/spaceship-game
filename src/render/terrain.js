@@ -223,7 +223,12 @@ export class Terrain {
       }
       const wl = new Float32Array(main * 3);
       for (let k = 0; k < main * 3; k++) wl[k] = dirs[k] * R;
+      // Water depth under each vertex (negative on land) for shore foam,
+      // shallow-water colour and transparency.
+      const wd = new Float32Array(main);
+      for (let k = 0; k < main; k++) wd[k] = -hs[k];
       const wg = new THREE.BufferGeometry();
+      wg.setAttribute('wdepth', new THREE.BufferAttribute(wd, 1));
       wg.setAttribute('position', new THREE.BufferAttribute(wpos, 3));
       wg.setAttribute('lpos', new THREE.BufferAttribute(wl, 3));
       wg.setAttribute('normal', new THREE.BufferAttribute(wnor, 3));

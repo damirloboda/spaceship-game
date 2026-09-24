@@ -317,7 +317,10 @@ export class Tools {
 
   // ---------------- trade ----------------
   discount() {
-    return reputationDiscount(this.state.reputation.veyari || 0);
+    // Reputation discount plus any bargain struck in conversation.
+    const h = this.state.haggle;
+    const extra = h && h.until > this.state.time ? h.pct / 100 : 0;
+    return Math.min(0.5, reputationDiscount(this.state.reputation.veyari || 0) + extra);
   }
 
   canTrade() {

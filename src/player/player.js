@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { humanoidModel, animateHumanoid, colorize, merge } from '../render/models.js';
 import { animatedInstance, CHARACTER_MODELS, addHelmet } from '../render/modelLib.js';
+import { buildJetpack } from '../render/jetpackModel.js';
 import { orientOnSurface } from '../render/fauna.js';
 import { INTERIOR } from '../render/shipModel.js';
 
@@ -56,6 +57,21 @@ export class Player {
     if (this.anim) this.helmet = addHelmet(this.anim, { tint: visor.getHex() });
     this.model = this.anim ? this.anim.root : humanoidModel([[suit.r, suit.g, suit.b], [visor.r * 0.6, visor.g * 0.6, visor.b * 0.6]], 1.8, this.modelMat, { suit: true, accent: [visor.r, visor.g, visor.b] });
     this.object.add(this.model);
+    if (this.anim) {
+      // Detailed jetpack strapped to the astronaut's torso bone.
+      this.jetpackRig = buildJetpack(visor);
+      const rig = this.jetpackRig.root;
+      rig.position.set(0, 1.08, 0.32);
+      rig.scale.setScalar(1.25);
+      this.object.add(rig);
+      this.object.updateMatrixWorld(true);
+      let torso = null;
+      this.anim.root.traverse((o) => { if (o.isBone && /^torso$/i.test(o.name)) torso = o; });
+      if (torso) torso.attach(rig);
+      this.jetpackBody = rig.children.filter((o) => o.isMesh || (o.isGroup && o !== rig));
+      this.skinned = [];
+      this.anim.root.traverse((o) => { if (o.isSkinnedMesh || (o.isMesh && !rig.getObjectById(o.id) && o !== this.helmet)) this.skinned.push(o); });
+    }
     // Jetpack on the back
     const jp = [];
     const pack = new THREE.BoxGeometry(0.46, 0.6, 0.24); pack.translate(0, 1.25, 0.3);
@@ -135,6 +151,7 @@ export class Player {
   }
 
   setSuitColors() {
+    this.jetpackRig?.dispose();
     this.object.remove(this.model, this.jetpackMesh, ...this.flames);
     this.modelMat.dispose();
     this.buildVisuals();
@@ -398,10 +415,35 @@ export class Player {
       else if (!this.grounded && this.airTime > 0.15) state = 'fall';
       else if (this.speed > 6) { state = 'run'; rate = this.speed / 8; }
       else if (this.speed > 0.4) { state = 'walk'; rate = THREE.MathUtils.clamp(this.speed / 3.2, 0.5, 1.6); }
+      // Touch-down after a real fall or jetpack flight.
+      if (this.grounded && (this.prevAir || 0) > 0.6) this.landT = 0.4;
+      this.prevAir = this.grounded ? 0 : this.airTime;
+      if (this.landT > 0) { this.landT -= dt; if (state === 'idle' || state === 'walk') state = 'land'; }
+      // Idle for a while: a friendly wave.
+      this.idleT = state === 'idle' ? (this.idleT || 0) + dt : 0;
+      if (this.idleT > 12) state = 'wave';
+      if (this.idleT > 14.5) this.idleT = 0;
       a.play(state, 0.2, rate);
       a.update(dt);
-      this.model.visible = tp;
+      // Lean into the direction of travel while flying the jetpack.
+      const flying = !this.grounded && !this.swimming;
+      const lean = flying ? THREE.MathUtils.clamp(this.speed / 9, 0, 1) * 0.4 : 0;
+      this.leanAmt = (this.leanAmt || 0) + (lean - (this.leanAmt || 0)) * Math.min(1, dt * 4);
+      this.model.rotation.x = -this.leanAmt;
+      // The model stays in the scene in first person so the jetpack's
+      // flame, light and particles remain; only the body is hidden.
+      this.model.visible = true;
+      for (const m of this.skinned || []) m.visible = tp;
+      if (this.helmet) this.helmet.visible = tp;
+      for (const m of this.jetpackBody || []) m.visible = tp;
       this.jetpackMesh.visible = false;
+      for (const f of this.flames) f.visible = false;
+      if (this.jetpackRig) {
+        this.jetpackRig.root.visible = jet.owned;
+        const onBody = this.mode === 'body' && this.body;
+        const gd = onBody ? this.pos.length() - this.body.groundRadius(this.pos.clone().normalize()) : Infinity;
+        this.jetpackRig.update(dt, { active: this.jetActive, fuelPct: jet.fuelPct, heatPct: jet.heatPct, overheated: jet.overheated }, onBody ? this.object.parent : null, this.up, gd);
+      }
       this.fpArms.visible = !tp && !this.game.photo?.active;
       const k = this.game.settings.reducedMotion ? 0 : 1;
       this.fpArms.position.set(Math.sin(this.bob * 1.6) * 0.012 * k, Math.abs(Math.cos(this.bob * 1.6)) * 0.015 * k - this.landImpact * 0.05, 0);
