@@ -625,7 +625,7 @@ export default {
   'touch.scan': 'SCAN',
   'touch.mine': 'MINE',
   'touch.sprint': 'RUN',
-  'touch.crouch': 'DIVE',
+  'touch.crouch': 'DOWN',
   'touch.boost': 'BOOST',
   'touch.lightbreak': 'LIGHT BREAK',
   'touch.up': 'UP',

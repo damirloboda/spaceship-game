@@ -603,7 +603,7 @@ export default {
   'touch.scan': 'СКАН',
   'touch.mine': 'ДОБЫЧА',
   'touch.sprint': 'БЕГ',
-  'touch.crouch': 'НЫРОК',
+  'touch.crouch': 'ВНИЗ',
   'touch.boost': 'BOOST',
   'touch.lightbreak': 'LIGHT BREAK',
   'touch.up': 'ВВЕРХ',

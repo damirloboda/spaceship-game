@@ -167,6 +167,27 @@ function box(w, h, d, x, y, z, color) {
   return colorize(g, color);
 }
 
+// Cabin wall displays: grid, a graph, readouts and status lights.
+function cabinScreenTexture() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 288;
+  const g = c.getContext('2d');
+  g.fillStyle = '#04121c'; g.fillRect(0, 0, 512, 288);
+  g.strokeStyle = 'rgba(80,220,255,0.35)'; g.lineWidth = 1;
+  for (let x = 0; x < 512; x += 32) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 288); g.stroke(); }
+  for (let y = 0; y < 288; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
+  g.strokeStyle = '#4fe0ff'; g.lineWidth = 3; g.beginPath();
+  for (let x = 20; x < 300; x += 4) g.lineTo(x, 150 + Math.sin(x * 0.05) * 40 + Math.sin(x * 0.17) * 12);
+  g.stroke();
+  g.fillStyle = '#ffb13d'; g.font = 'bold 26px monospace'; g.fillText('REACTOR 98%', 320, 60);
+  g.fillStyle = '#9fe8ff'; g.font = '18px monospace';
+  ['HULL   100', 'O2     OK', 'FUEL   97', 'NAV    SYNC'].forEach((l, i) => g.fillText(l, 330, 110 + i * 30));
+  for (let i = 0; i < 8; i++) { g.fillStyle = i < 6 ? '#3ef0b0' : '#1d4a40'; g.fillRect(24 + i * 34, 238, 26, 26); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   const root = new THREE.Group();
   root.name = 'ship';
@@ -384,7 +405,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
 
   // ---------- Interior ----------
   const I = INTERIOR;
-  const wallC = [0.78, 0.8, 0.83], floorC = [0.28, 0.3, 0.34], trimC = [0.95, 0.5, 0.15], darkC = [0.2, 0.22, 0.25];
+  const wallC = [0.66, 0.7, 0.75], floorC = [0.26, 0.28, 0.32], trimC = [0.95, 0.5, 0.15], darkC = [0.2, 0.22, 0.25];
   const parts = [];
   const colliders = [];
   const solid = (w, h, d, x, y, z, c, collide = true) => {
@@ -430,6 +451,29 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   // Cargo crates
   solid(1.1, 1.1, 1.1, -2.5, 0.55, 9.5, [0.55, 0.45, 0.25]);
   solid(1.1, 0.9, 1.1, 2.5, 0.45, 9.6, [0.35, 0.45, 0.3]);
+  // Structural ribs, an accent band and kick plates, ceiling pipes and
+  // handrails: the cabin reads as a working ship, not a plain box.
+  const ribC = [0.4, 0.43, 0.48], pipeC = [0.56, 0.59, 0.63];
+  for (let z = I.minZ + 1; z < I.maxZ; z += 1.8) {
+    for (const x of [I.minX + 0.06, I.maxX - 0.06]) parts.push(box(0.14, I.height, 0.22, x, I.height / 2, z, ribC));
+    parts.push(box(I.maxX - I.minX, 0.14, 0.22, 0, I.height - 0.07, z, ribC));
+  }
+  for (const x of [I.minX + 0.02, I.maxX - 0.02]) {
+    parts.push(box(0.04, 0.07, L, x, 1.05, 0, trimC));
+    parts.push(box(0.05, 0.24, L, x, 0.12, 0, darkC));
+  }
+  const pipe = (r, x, y, c) => { const g = new THREE.CylinderGeometry(r, r, L, 10).rotateX(Math.PI / 2); g.translate(x, y, 0); parts.push(colorize(g, c)); };
+  pipe(0.07, -1.95, I.height - 0.22, pipeC);
+  pipe(0.045, -1.72, I.height - 0.2, [0.8, 0.35, 0.15]);
+  pipe(0.09, 1.85, I.height - 0.25, pipeC);
+  pipe(0.035, 1.6, I.height - 0.18, [0.25, 0.55, 0.85]);
+  for (const x of [I.minX + 0.2, I.maxX - 0.2]) {
+    const g = new THREE.CylinderGeometry(0.025, 0.025, L - 2, 8).rotateX(Math.PI / 2);
+    g.translate(x, 1.3, 0);
+    parts.push(colorize(g, [0.72, 0.74, 0.78]));
+  }
+  // Floor plates with a darker seam every 1.2 m
+  for (let z = I.minZ + 0.6; z < I.maxZ; z += 1.2) parts.push(box(I.maxX - I.minX, 0.012, 0.04, 0, 0.006, z, [0.16, 0.17, 0.2]));
   // Floor trim lights
   const lights = [];
   for (let z = -10; z <= 10; z += 2.5) {
@@ -439,7 +483,8 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   lights.push(box(2.0, 0.05, 0.3, 0, I.height - 0.02, -5, [1, 1, 1]));
   lights.push(box(2.0, 0.05, 0.3, 0, I.height - 0.02, 1, [1, 1, 1]));
   lights.push(box(2.0, 0.05, 0.3, 0, I.height - 0.02, 5, [1, 1, 1]));
-  const intMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.2 });
+  const intMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.3 });
+  applyHullDetail(intMat, { tile: 2.4, strength: 0.75 });
   const intMesh = new THREE.Mesh(merge(parts), intMat);
   intMesh.receiveShadow = true;
   interior.add(intMesh);
@@ -452,13 +497,22 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   win.position.set(0, 1.83, I.minZ - 0.1);
   interior.add(win);
   // Console screens
-  const screenMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.9, 1.0), toneMapped: false });
+  const screenMat = new THREE.MeshBasicMaterial({ map: cabinScreenTexture(), color: new THREE.Color(1.3, 1.3, 1.3), toneMapped: false });
   for (const [x, z] of [[-2.3, -9.35], [2.3, -9.35], [0, -8.49]]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.4), screenMat);
     s.position.set(x, x === 0 ? 1.2 : 0.9, z);
     s.rotation.x = x === 0 ? 0 : -0.8;
     if (x === 0) s.rotation.y = Math.PI;
     interior.add(s);
+  }
+  // Wall displays along the corridor
+  for (const [x, z, ry] of [[I.minX + 0.08, -2.5, Math.PI / 2], [I.maxX - 0.08, 0.2, -Math.PI / 2], [I.minX + 0.08, 4.2, Math.PI / 2], [I.maxX - 0.08, -6.2, -Math.PI / 2]]) {
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.05), new THREE.MeshStandardMaterial({ color: 0x1a1d22, metalness: 0.6, roughness: 0.4 }));
+    frame.position.set(x, 1.6, z); frame.rotation.y = ry;
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.45), screenMat);
+    scr.position.set(0, 0, 0.03);
+    frame.add(scr);
+    interior.add(frame);
   }
   // Engine core glow
   const coreMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.7, 1.0).multiplyScalar(2), toneMapped: false });

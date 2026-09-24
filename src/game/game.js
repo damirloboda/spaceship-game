@@ -52,7 +52,7 @@ export class Game {
     setLanguage(this.settings.language);
     this.mobile = isMobileDevice();
     this.quality = { ...presetFor(this.settings), budgetMs: this.settings.platform === 'mobile' ? 3 : 5 };
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.mobile, logarithmicDepthBuffer: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -104,7 +104,10 @@ export class Game {
     const q = { ...presetFor(this.settings), budgetMs: this.settings.platform === 'mobile' ? 3 : 5 };
     this.quality = q;
     this.renderer.shadowMap.enabled = q.shadows > 0;
-    this.pixelRatioBase = Math.min(q.pixelRatio, Math.max(1, Math.min(window.devicePixelRatio || 1, 2)));
+    // Phones have 3x screens: render up to the preset's scale of CSS pixels
+    // (never above the screen's own density), so the image stays sharp.
+    const dpr = window.devicePixelRatio || 1;
+    this.pixelRatioBase = Math.min(q.pixelRatio, Math.max(1, Math.min(dpr, this.settings.platform === 'mobile' ? 3 : 2)));
     this.dynScale = 1;
     this.renderer.setPixelRatio(this.pixelRatioBase);
     this.stars.material.uniforms.uPixelRatio.value = this.pixelRatioBase;
@@ -994,11 +997,12 @@ export class Game {
     if (this.frameTimes.length > 60) this.frameTimes.shift();
     if (!this.settings.dynamicResolution || this.frameTimes.length < 60 || !this.state) return;
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-    const target = 1 / (this.quality.fpsCap || 60);
+    // Phones aim for a steady 30+ fps; resolution never drops below 80%.
+    const target = this.settings.platform === 'mobile' ? 1 / 40 : 1 / (this.quality.fpsCap || 60);
     this.dynTimer = (this.dynTimer || 0) + dt;
     if (this.dynTimer < 1.5) return;
     this.dynTimer = 0;
-    if (avg > target * 1.25 && this.dynScale > 0.55) this.setPixelScale(Math.max(0.55, this.dynScale - 0.1));
+    if (avg > target * 1.25 && this.dynScale > 0.8) this.setPixelScale(Math.max(0.8, this.dynScale - 0.05));
     else if (avg < target * 0.85 && this.dynScale < 1) this.setPixelScale(Math.min(1, this.dynScale + 0.05));
   }
 

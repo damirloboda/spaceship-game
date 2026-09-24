@@ -10,11 +10,11 @@ export const PC_PRESETS = {
 };
 
 export const MOBILE_PRESETS = {
-  BATTERY: { detail: false, pixelRatio: 0.6, grid: 12, split: 1.2, flora: 0.2, shadows: 0, bloom: false, creatures: 8, clouds: 1, weather: 300, fpsCap: 30, msaa: 0, aniso: 2, shadowRange: 50 },
-  PERFORMANCE: { detail: false, pixelRatio: 0.75, grid: 14, split: 1.3, flora: 0.35, shadows: 0, bloom: false, creatures: 10, clouds: 1, weather: 500, fpsCap: 60, msaa: 0, aniso: 2, shadowRange: 50 },
-  BALANCED: { detail: true, pixelRatio: 1.0, grid: 16, split: 1.45, flora: 0.5, shadows: 1024, bloom: true, creatures: 14, clouds: 2, weather: 800, fpsCap: 60, msaa: 0, aniso: 4, shadowRange: 60 },
-  QUALITY: { detail: true, pixelRatio: 1.25, grid: 20, split: 1.5, flora: 0.8, shadows: 1024, bloom: true, creatures: 18, clouds: 2, weather: 1200, fpsCap: 60, msaa: 2, aniso: 8, shadowRange: 70 },
-  ULTRA_MOBILE: { detail: true, pixelRatio: 1.75, grid: 24, split: 1.7, flora: 1.1, shadows: 2048, bloom: true, creatures: 24, clouds: 3, weather: 1600, fpsCap: 60, msaa: 4, aniso: 16, shadowRange: 90 },
+  BATTERY: { detail: false, pixelRatio: 1.0, grid: 12, split: 1.2, flora: 0.2, shadows: 0, bloom: false, creatures: 8, clouds: 1, weather: 300, fpsCap: 30, msaa: 2, aniso: 2, shadowRange: 50 },
+  PERFORMANCE: { detail: false, pixelRatio: 1.25, grid: 14, split: 1.3, flora: 0.35, shadows: 0, bloom: false, creatures: 10, clouds: 1, weather: 500, fpsCap: 60, msaa: 2, aniso: 2, shadowRange: 50 },
+  BALANCED: { detail: true, pixelRatio: 1.6, grid: 16, split: 1.45, flora: 0.5, shadows: 1024, bloom: true, creatures: 14, clouds: 2, weather: 800, fpsCap: 60, msaa: 4, aniso: 4, shadowRange: 60 },
+  QUALITY: { detail: true, pixelRatio: 2.0, grid: 20, split: 1.5, flora: 0.8, shadows: 1024, bloom: true, creatures: 18, clouds: 2, weather: 1200, fpsCap: 60, msaa: 4, aniso: 8, shadowRange: 70 },
+  ULTRA_MOBILE: { detail: true, pixelRatio: 2.5, grid: 24, split: 1.7, flora: 1.1, shadows: 2048, bloom: true, creatures: 24, clouds: 3, weather: 1600, fpsCap: 60, msaa: 4, aniso: 16, shadowRange: 90 },
 };
 
 export function isMobileDevice() {

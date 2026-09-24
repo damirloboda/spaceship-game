@@ -603,7 +603,7 @@ export default {
   'touch.scan': 'TARA',
   'touch.mine': 'KAZ',
   'touch.sprint': 'KOŞ',
-  'touch.crouch': 'DAL',
+  'touch.crouch': 'AŞAĞI',
   'touch.boost': 'BOOST',
   'touch.lightbreak': 'LIGHT BREAK',
   'touch.up': 'YUKARI',

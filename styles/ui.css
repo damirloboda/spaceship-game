@@ -435,3 +435,21 @@ body.touch .shiphud .landguide .lg-hint { font-size: 9px; }
 body.touch .prompt { top: calc(max(8px, env(safe-area-inset-top)) + 52px); bottom: auto; font-size: 13px; padding: 6px 14px; border-radius: 16px; }
 body.touch .vitals .hrow { font-size: 9px; }
 .shiphud .landguide .lg-row span { white-space: nowrap; }
+
+/* Phones: compact on-foot HUD and banners that don't collide with panels. */
+body.touch .vitals { width: 138px; padding: 7px 9px; gap: 3px; border-radius: 12px; bottom: max(10px, env(safe-area-inset-bottom)); }
+body.touch .vitals .hrow { grid-template-columns: 14px 1fr auto; grid-template-rows: auto 4px; column-gap: 6px; row-gap: 1px; font-size: 8.5px; letter-spacing: 0.1em; }
+body.touch .vitals .hrow .ic { width: 14px; height: 14px; font-size: 7px; }
+body.touch .vitals .hrow em { font-size: 9px; }
+body.touch .vitals .hrow .bar { height: 4px; }
+body.touch .vitals .credits { font-size: 12px; margin-top: 2px; }
+body.touch .objective { max-width: 32vw; padding: 5px 9px 6px; border-radius: 10px; }
+body.touch .objective .label { font-size: 8.5px; }
+body.touch .objective .text { font-size: 11px; line-height: 1.25; }
+body.touch .banner { top: 36%; }
+body.touch .banner .b-main { font-size: clamp(16px, 3vw, 26px); letter-spacing: 0.1em; }
+body.touch .banner .b-sub { font-size: 10px; letter-spacing: 0.2em; }
+body.touch .banner.discovery .b-main { font-size: clamp(14px, 2.4vw, 20px); }
+body.touch .ttop button { padding: 6px 9px; font-size: 10.5px; }
+body.touch .marker span { font-size: 10px; }
+body.touch .marker em { font-size: 9px; }

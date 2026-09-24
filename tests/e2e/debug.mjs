@@ -25,8 +25,8 @@ if (process.env.MODELS_BUNDLE) {
   await page.route(/\/assets\/models\/models[-0-9]*\.json$/, async (r) => { const n = r.request().url().split('/').pop(); try { r.fulfill({ body: await readFile(join(process.env.MODELS_BUNDLE, n)), contentType: 'application/json' }); } catch { r.fulfill({ status: 404, body: '' }); } });
 }
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); if (m.text().startsWith('DBG')) console.log(m.text()); });
-page.on('pageerror', (e) => errors.push(e.message));
+page.on('console', (m) => { if (m.type() === 'error') { errors.push(m.text()); if (process.env.VERBOSE) console.log('CONSOLE', m.text()); } if (m.text().startsWith('DBG')) console.log(m.text()); });
+page.on('pageerror', (e) => { errors.push(e.message); if (process.env.VERBOSE) console.log('PAGEERROR', e.message, e.stack); });
 await page.goto(`http://localhost:${srv.address().port}/?dev=1`);
 await page.waitForFunction(() => window.__game && document.querySelector('.title-screen'));
 await page.evaluate(() => { window.__game.menus.closeAll(); window.__game.newGame({ name: 'Test' }); window.__game.hud.bannerQueue.length = 0; });
