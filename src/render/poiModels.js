@@ -14,13 +14,27 @@ const mats = {};
 function stone(color) {
   const key = `stone${color}`;
   if (!mats[key]) {
-    mats[key] = new THREE.MeshStandardMaterial({
+    const m = new THREE.MeshStandardMaterial({
       // The photo map is dark grey: lift the tint so sandstone reads as sandstone.
       color: new THREE.Color(color).multiplyScalar(1.9), roughness: 0.95, metalness: 0,
       map: texture('asteroid_diff.jpg', { srgb: true, repeat: 1 }),
-      normalMap: texture('asteroid_nor.jpg', { repeat: 1 }),
-      normalScale: new THREE.Vector2(1.2, 1.2),
     });
+    // Triplanar in metres (site space after merging): long columns and
+    // blocks keep the rock grain at one scale instead of stretching it.
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTriP;\nvarying vec3 vTriN;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTriP = position;\nvTriN = normal;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTriP;\nvarying vec3 vTriN;')
+        .replace('#include <map_fragment>', `
+          vec3 tw = pow(abs(normalize(vTriN)), vec3(4.0)); tw /= dot(tw, vec3(1.0));
+          vec3 tp = vTriP * 0.3;
+          vec4 tc = texture2D(map, tp.zy) * tw.x + texture2D(map, tp.xz) * tw.y + texture2D(map, tp.xy) * tw.z;
+          diffuseColor *= tc;`);
+    };
+    m.customProgramCacheKey = () => 'poi-stone-triplanar';
+    mats[key] = m;
   }
   return mats[key];
 }

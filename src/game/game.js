@@ -24,7 +24,7 @@ import { AudioSystem } from './audio.js';
 import { Effects } from '../render/effects.js';
 import { Weather } from '../render/weather.js';
 import { createGalaxyBackground, renderGalaxyCube, createStarfield, createStreaks, createTunnel } from '../render/sky.js';
-import { GEAR_HEIGHT, RAMP_EXIT, EXIT_FACING } from '../render/shipModel.js';
+import { GEAR_HEIGHT, RAMP_EXIT, EXIT_FACING, INTERIOR } from '../render/shipModel.js';
 import { Tools } from './tools.js';
 import { Director } from './director.js';
 import { findInteraction } from './interactions.js';
@@ -727,9 +727,37 @@ export class Game {
     }
   }
 
+  // Third person inside the ship: pull the camera in along the boom so it
+  // never ends up inside a wall, partition or piece of furniture.
+  keepCabinCameraInside() {
+    const p = this.player, I = INTERIOR;
+    const want = new THREE.Vector3(0.45, 0.3, 2.4);
+    p.tpCam.position.copy(want);
+    p.object.updateMatrixWorld(true);
+    const interior = this.ship.model.interior;
+    const from = interior.worldToLocal(p.tpPivot.getWorldPosition(new THREE.Vector3()));
+    const to = interior.worldToLocal(p.tpCam.getWorldPosition(new THREE.Vector3()));
+    const m = 0.18;
+    const blocked = (q) => {
+      if (q.x < I.minX + m || q.x > I.maxX - m || q.z < I.minZ + m || q.z > I.maxZ - m || q.y < 0.15 || q.y > I.height - 0.12) return true;
+      for (const c of this.ship.model.colliders) {
+        if (q.x > c.min[0] - m && q.x < c.max[0] + m && q.y > c.min[1] - 0.05 && q.y < c.max[1] + 0.05 && q.z > c.min[2] - m && q.z < c.max[2] + m) return true;
+      }
+      return false;
+    };
+    let k = 1;
+    const q = new THREE.Vector3();
+    for (let s = 0.08; s <= 1.0001; s += 0.04) {
+      if (blocked(q.lerpVectors(from, to, s))) { k = Math.max(0.12, s - 0.1); break; }
+    }
+    p.tpCam.position.copy(want).multiplyScalar(k);
+    // Too close to see past the body: hide it, like first person.
+    p.cameraTooClose = k < 0.45;
+  }
+
   keepThirdPersonAboveGround() {
     const p = this.player;
-    if (p.mode !== 'body') { p.tpCam.position.set(0.5, 0.25, 2.2); return; }
+    if (p.mode !== 'body') { this.keepCabinCameraInside(); return; }
     p.tpCam.position.set(0.7, 0.35, 4.2);
     p.object.updateMatrixWorld(true);
     const w = p.tpCam.getWorldPosition(tv);
@@ -1013,7 +1041,7 @@ export class Game {
     this.dynTimer = (this.dynTimer || 0) + dt;
     if (this.dynTimer < 1.5) return;
     this.dynTimer = 0;
-    if (avg > target * 1.25 && this.dynScale > 0.8) this.setPixelScale(Math.max(0.8, this.dynScale - 0.05));
+    if (avg > target * 1.25 && this.dynScale > 0.7) this.setPixelScale(Math.max(0.7, this.dynScale - 0.05));
     else if (avg < target * 0.85 && this.dynScale < 1) this.setPixelScale(Math.min(1, this.dynScale + 0.05));
   }
 

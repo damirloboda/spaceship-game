@@ -612,6 +612,7 @@ export class Ship {
   // Navigation lights, strobe, engine glow on the ground, landing dust and
   // wingtip vapour trails.
   updateFx(dt, thrust, flying) {
+    if (this.model.reactorMat) this.model.reactorMat.uniforms.uTime.value += dt;
     // Re-entry plasma sheath on the leading side.
     const heat = this.entryHeat || 0;
     this.plasma.visible = heat > 0.02;

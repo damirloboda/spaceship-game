@@ -146,12 +146,17 @@ try {
   // 6b. Sleep in the bunk: lie down, time skips to the morning, stand up.
   const slept = await ev(() => {
     const g = window.__game, p = g.player;
+    g.menus.closeAll();
+    g.input.endFrame(); // drop the Escape that closed the tech bay
+    const back = p.pos.clone();
     p.pos.set(-0.8, 0, -3.6);
     g.sleepInBunk(() => g.menus.skipToHour(7), 'rest.woke_up');
     const started = !!g.sleep;
     let lay = 0;
     for (let i = 0; i < 30 * 9 && g.sleep; i++) { g.simulate(1 / 30, 1 / 30); lay = Math.max(lay, p.model.rotation.x); }
-    return { started, lay: +lay.toFixed(2), done: !g.sleep, hour: +(g.localHour || 0).toFixed(1), mode: g.mode, stand: p.model.rotation.x };
+    const r = { started, lay: +lay.toFixed(2), done: !g.sleep, hour: +(g.localHour || 0).toFixed(1), mode: g.mode, stand: p.model.rotation.x };
+    p.pos.copy(back);
+    return r;
   });
   check('sleep in the bunk until morning', slept.started && slept.lay > 1.3 && slept.done && slept.hour >= 6.5 && slept.hour < 9 && slept.mode === 'interior' && slept.stand === 0, JSON.stringify(slept));
   // 7. Walk to the cockpit, sit, take off

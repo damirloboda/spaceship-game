@@ -324,8 +324,13 @@ export class Hud {
     if (g.photo.active) { this.el.markers.style.display = 'none'; return; }
     this.el.markers.style.display = '';
     const cam = g.camera;
-    const list = this.collectMarkers();
     const camPos = cam.getWorldPosition(new THREE.Vector3());
+    // Resource and creature markers: at most 10, labels on the 3 nearest.
+    const all = this.collectMarkers();
+    const small = all.filter((m) => m.small).map((m) => ({ m, d: m.world.distanceTo(camPos) })).sort((a, b) => a.d - b.d);
+    small.forEach((e, i) => { e.m.quiet = i >= 3; });
+    const keep = new Set(small.slice(0, 10).map((e) => e.m));
+    const list = all.filter((m) => !m.small || keep.has(m));
     const w = this.root.clientWidth, hgt = this.root.clientHeight;
     while (this.markerPool.length < list.length) {
       const el = h('div', { class: 'marker' }, h('b'), h('span'), h('em'));
@@ -354,8 +359,8 @@ export class Hud {
       el.classList.toggle('edge', edge);
       el.classList.toggle('target', !!m.target);
       el.children[0].textContent = m.icon;
-      el.children[1].textContent = edge && !m.target ? '' : m.label;
-      el.children[2].textContent = fmtDistance(d);
+      el.children[1].textContent = (edge && !m.target) || m.quiet ? '' : m.label;
+      el.children[2].textContent = m.quiet ? '' : fmtDistance(d);
     });
   }
 

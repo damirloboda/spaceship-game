@@ -4,7 +4,7 @@
 // Ship-local axes: forward = -Z, up = +Y, interior deck at y = 0.
 import * as THREE from 'three';
 import { colorize, merge } from './models.js';
-import { createFieldMaterial, createExhaustMaterial } from './shaders.js';
+import { createFieldMaterial, createExhaustMaterial, V_HEAD, V_TAIL, F_HEAD, F_DEPTH } from './shaders.js';
 import { texture, applyHullDetail } from './textures.js';
 import { staticInstance, SHIP_MODEL } from './modelLib.js';
 import { bed, fridge, galley, diningTable, workbench, labBench, pilotSeat, crate } from './interiorProps.js';
@@ -529,9 +529,39 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
     frame.add(scr);
     interior.add(frame);
   }
-  // Engine core glow
-  const coreMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.6, 1.0).multiplyScalar(1.15), toneMapped: false });
-  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.6, 12), coreMat);
+  // Reactor: a glass tube of swirling plasma between steel end caps and rings.
+  const coreMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: V_HEAD + 'varying vec3 vP; varying vec3 vN; varying vec3 vV; void main(){ vP = position; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; ' + V_TAIL + ' }',
+    fragmentShader: F_HEAD + `
+      uniform float uTime; varying vec3 vP; varying vec3 vN; varying vec3 vV;
+      void main(){
+        ${F_DEPTH}
+        float a = atan(vP.x, vP.z);
+        float swirl = sin(vP.y * 14.0 - uTime * 3.0 + a * 3.0) * 0.5 + 0.5;
+        float bands = pow(sin(vP.y * 40.0 + uTime * 6.0) * 0.5 + 0.5, 6.0);
+        float rim = pow(1.0 - abs(dot(vN, vV)), 1.5);
+        float core = pow(abs(dot(vN, vV)), 3.0);
+        vec3 deep = vec3(0.02, 0.1, 0.35), hot = vec3(0.35, 0.85, 1.0);
+        vec3 c = mix(deep, hot, swirl * 0.55 + core * 0.45) * (0.7 + bands * 0.8) + vec3(0.6, 0.9, 1.0) * rim * 0.5;
+        gl_FragColor = vec4(c * 1.4, 1.0);
+      }`,
+    toneMapped: false,
+  });
+  const core = new THREE.Group();
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.4, 32, 1), coreMat);
+  core.add(tube);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x5a6068, metalness: 0.9, roughness: 0.3 });
+  for (const y of [-0.74, 0.74]) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.42, 0.14, 24), capMat);
+    cap.position.y = y;
+    core.add(cap);
+  }
+  for (const y of [-0.35, 0, 0.35]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.03, 8, 32), capMat);
+    ring.rotation.x = Math.PI / 2; ring.position.y = y;
+    core.add(ring);
+  }
   core.rotation.z = Math.PI / 2;
   core.position.set(0, 1.0, 5.45);
   interior.add(core);
@@ -607,6 +637,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
     nitro: { panel, doorPivot, canister, open: false, openT: 0 },
     cockpitEye: new THREE.Vector3(0, 1.62, -9.1),
     bunk,
+    reactorMat: coreMat,
     materials: [hullMat, canopyMat, glowMat, flameMat, gearMat, intMat, stripMat, windowMat, screenMat, coreMat],
   };
 }

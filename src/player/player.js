@@ -402,7 +402,7 @@ export class Player {
   }
 
   animate(dt) {
-    const tp = this.game.cameraMode === 'third' || this.game.photo?.active || !!this.game.sleep;
+    const tp = (this.game.cameraMode === 'third' && !(this.mode !== 'body' && this.cameraTooClose)) || this.game.photo?.active || !!this.game.sleep;
     const jet = this.game.state.jetpack;
     this.jetpackMesh.visible = jet.owned;
     for (const f of this.flames) {

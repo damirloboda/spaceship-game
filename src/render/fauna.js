@@ -74,6 +74,9 @@ export class Fauna {
   }
 
   spawnNear(center, sp, count, rng) {
+    // Fliers come in pairs or threes, high enough to read as birds, not as
+    // a cloud of specks hanging over the player.
+    if (sp.flying) count = Math.min(count, 3);
     const up = center.clone().normalize();
     const t1 = new THREE.Vector3(1, 0, 0).cross(up);
     if (t1.lengthSq() < 1e-4) t1.set(0, 0, 1).cross(up);
@@ -81,12 +84,12 @@ export class Fauna {
     const t2 = up.clone().cross(t1);
     for (let i = 0; i < count && this.creatures.length < this.max; i++) {
       const a = rng.range(0, Math.PI * 2);
-      const d = rng.range(0, 8 + sp.size * 3);
+      const d = rng.range(0, 8 + sp.size * 3) * (sp.flying ? 4 : 1);
       const dir = up.clone().addScaledVector(t1, (Math.cos(a) * d) / this.surface.radius).addScaledVector(t2, (Math.sin(a) * d) / this.surface.radius).normalize();
       const g = this.groundAt(dir);
       if (this.surface.hasOcean && g.h < 0.5) continue;
       const { obj, anim } = this.makeCreatureObject(sp);
-      const hover = sp.flying ? rng.range(6, 18) : 0;
+      const hover = sp.flying ? rng.range(22, 55) : 0;
       const pos = dir.clone().multiplyScalar(g.r + hover);
       obj.position.copy(pos);
       const heading = t1.clone().applyAxisAngle(up, rng.range(0, Math.PI * 2));
