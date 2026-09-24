@@ -11,7 +11,7 @@ const CELL = 1400;
 const RANGE = 7000;
 const CAP = 900;
 
-function rockGeometry(seed) {
+export function rockGeometry(seed) {
   const g = new THREE.IcosahedronGeometry(1, 4);
   const n = new Noise3(seed);
   const rng = new RNG(seed);

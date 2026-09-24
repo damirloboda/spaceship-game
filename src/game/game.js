@@ -34,8 +34,9 @@ import { TouchControls } from '../ui/touch.js';
 import { PhotoMode } from '../ui/photo.js';
 import { Environment } from '../render/environment.js';
 import { atmosphereColor, GradeShader } from '../render/shaders.js';
-import { loadTerrainTextures, terrainTime } from '../render/textures.js';
+import { loadTerrainTextures, terrainTime, setAnisotropy } from '../render/textures.js';
 import { AsteroidFields } from '../render/asteroids.js';
+import { SpaceMeteors } from '../render/meteors.js';
 import { Weapons } from './weapons.js';
 
 const tv = new THREE.Vector3();
@@ -106,8 +107,19 @@ export class Game {
     this.dynScale = 1;
     this.renderer.setPixelRatio(this.pixelRatioBase);
     this.stars.material.uniforms.uPixelRatio.value = this.pixelRatioBase;
+    const maxAniso = this.renderer.capabilities.getMaxAnisotropy?.() || 1;
+    setAnisotropy(Math.max(1, Math.min(q.aniso || 4, maxAniso)));
+    // Post-processing render targets are not multisampled by default, so the
+    // canvas MSAA is lost with bloom on: give the composer its own samples.
+    const samples = this.renderer.capabilities.isWebGL2 ? Math.min(q.msaa || 0, this.renderer.capabilities.maxSamples || 4) : 0;
+    if (this.composer && this.composerSamples !== samples) {
+      this.composer.dispose();
+      this.composer = null;
+    }
     if (q.bloom && !this.composer) {
-      this.composer = new EffectComposer(this.renderer);
+      this.composerSamples = samples;
+      const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples });
+      this.composer = new EffectComposer(this.renderer, rt);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5, 0.85);
       this.composer.addPass(this.bloom);
@@ -193,6 +205,7 @@ export class Game {
     this.player = new Player(this);
     this.skimmer = new Skimmer(this);
     this.asteroids = new AsteroidFields(this);
+    this.meteors = new SpaceMeteors(this, this.settings.platform === 'mobile' ? 4 : 6);
     this.weapons = new Weapons(this);
     this.loadSystem(state.location.systemId);
     const placed = !state.newGame && this.restoreLocation();
@@ -806,7 +819,15 @@ export class Game {
     const cabin = this.mode === 'interior' || this.mode === 'pilot' || this.mode === 'docked';
     if (this.ship) for (const l of this.ship.model.lamps) l.intensity = cabin ? (this.mode === 'pilot' ? 2 : 9) : 0;
     if (!active || !inAtmo) this.localHour = this.localHour ?? 12;
-    const w = this.weather.update(dt, active, this.player?.mode === 'body' ? this.player.pos : null);
+    // Weather follows whoever is on the surface: the walker or the low-flying ship.
+    const wxAt = this.player?.mode === 'body' && this.mode !== 'pilot' ? this.player.pos
+      : this.mode === 'pilot' && this.ship.body === active ? this.ship.root.position : null;
+    const w = this.weather.update(dt, active, wxAt);
+    guard('meteors', () => this.meteors?.update(dt, {
+      inSpace: !inAtmo && (!this.ship.body || this.ship.altitude > 1500),
+      daylight, body: active && inAtmo ? active : null,
+      weatherClear: !w || w.clouds < 0.5,
+    }));
     // Fog: aerial perspective inside atmospheres, heavy under water.
     const fog = this.scene.fog;
     if (active && inAtmo) {
@@ -834,7 +855,8 @@ export class Game {
         near.multiplyScalar(Math.min(1, 2.5 / nl));
       }
       sky.r = Math.max(sky.r, 0.012); sky.g = Math.max(sky.g, 0.016); sky.b = Math.max(sky.b, 0.03);
-      sky.lerp(new THREE.Color(0.32, 0.33, 0.36).multiplyScalar(0.3 + daylight * 0.7), this.weather.stormAmount * 0.6);
+      const tint = w?.tint || [0.32, 0.33, 0.36];
+      sky.lerp(new THREE.Color(...tint).multiplyScalar(0.3 + daylight * 0.7), this.weather.stormAmount * (w?.tint ? 0.85 : 0.6) * this.weather.blend);
       fog.color.copy(sky);
       const base = (1 / 22000) * active.def.atmosphere.density * (w?.fog || 1);
       fog.density = base * (1 - altFrac * 0.9);
@@ -876,12 +898,19 @@ export class Game {
     this.lastEnvKey = envKey;
     this.scene.backgroundIntensity = 1 - (inAtmo ? daylight * (1 - altFrac) * 0.9 : 0);
     // Shadows follow the player on quality presets that allow them.
-    if (this.quality.shadows && this.activeBody && this.player?.mode === 'body') {
+    // Low-flying ship casts a shadow too: the best depth cue for landing.
+    const shipLow = this.mode === 'pilot' && this.ship.body === this.activeBody && !(this.ship.altitude > 400);
+    if (this.quality.shadows && this.activeBody && (this.player?.mode === 'body' || shipLow)) {
       const s = uni.sun;
       s.castShadow = true;
-      s.shadow.mapSize.set(this.quality.shadows, this.quality.shadows);
+      if (s.shadow.mapSize.x !== this.quality.shadows) {
+        s.shadow.map?.dispose();
+        s.shadow.map = null;
+        s.shadow.mapSize.set(this.quality.shadows, this.quality.shadows);
+      }
       const cam = s.shadow.camera;
-      cam.left = -60; cam.right = 60; cam.top = 60; cam.bottom = -60; cam.near = 1; cam.far = 4500;
+      const R = this.quality.shadowRange || 60;
+      cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R; cam.near = 1; cam.far = 4500;
       cam.updateProjectionMatrix();
       s.shadow.bias = -0.0005;
     } else {

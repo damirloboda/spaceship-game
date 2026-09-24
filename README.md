@@ -75,7 +75,10 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   with an opening engine-compartment panel, workbench, cargo hold), module
   damage and repair, fuel, power distribution, Nitro/Overdrive, Lightbreak
   (in-system cruise and interstellar jumps), autopilot, auto/emergency landing,
-  docking at the orbital station.
+  docking at the orbital station. Landing assist: below 180 m the ship levels
+  itself and caps its sink rate, a landing guide shows vertical speed and
+  go/no-go, and auto-land is offered from 2 km (a big green LAND button on
+  phones).
 - **Sky & grading**: physically based Rayleigh/Mie sky (blue zenith, bright
   horizon, sun disc, orange sunsets, alien-tinted skies); fog takes the sky
   colour in the view direction; filmic colour grade with vignette and grain.
@@ -109,13 +112,17 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
 - **Economy & reputation**: supply/demand prices, reputation tiers that change
   prices and access, crafting, research, museum, bases with storage and a
   garage, hover-bike.
-- **Living world**: dynamic weather (rain, storms with lightning, snow,
-  sandstorms, ash…), meteor showers, city outages, migrations, distress calls,
+- **Living world**: dynamic weather (rain, storms with forked lightning bolts,
+  snow, rolling sandstorm/blizzard/ash billows with tinted fog…), meteoroids
+  with glowing dust and ion tails crossing open space (near misses shake the
+  ship), shooting stars on clear nights, meteor showers, city outages, migrations, distress calls,
   radio chatter and the Galactic News Network, an unmarked Precursor mystery.
 - **Saves**: versioned local save with migration and backup recovery,
   autosave, export/import code to move progress between PC and phone.
 - **UI & settings**: minimalist HUD, graphics presets (PC LOW…CINEMATIC,
-  mobile BATTERY…ULTRA MOBILE) with dynamic resolution, accessibility options,
+  mobile BATTERY…ULTRA MOBILE) with dynamic resolution; ULTRA adds MSAA
+  under the post-processing, 4K soft shadows over a wider range (the ship
+  shadows the ground while landing) and 16x anisotropic filtering, accessibility options,
   photo mode, English / Русский / Türkçe / Українська.
 
 ## Tests

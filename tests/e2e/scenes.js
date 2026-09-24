@@ -96,3 +96,51 @@ window.__scenes.takeoff = (secs = 3) => {
   g.simulate(secs, 1 / 30);
   return { landed: g.ship.landed, alt: Math.round(g.ship.altitude) };
 };
+// Force a weather type on the current planet and let it blend in.
+window.__scenes.storm = (type = 'sandstorm', secs = 25) => {
+  const g = window.__game, b = g.player.body;
+  if (g.cameraMode !== 'third') g.toggleView();
+  g.weather.force(b, type);
+  g.simulate(secs, 1 / 10);
+  return { type: g.weather.currentType, blend: +g.weather.blend.toFixed(2) };
+};
+// Lightning bolt in front of the camera.
+window.__scenes.bolt = () => {
+  const g = window.__game, b = g.player.body;
+  g.weather.force(b, 'storm');
+  g.weather.states.get(b.id).blend = 1;
+  const at = g.player.pos.clone().addScaledVector(g.player.forward, 900);
+  g.weather.strike(b, g.player.pos.clone().addScaledVector(g.player.forward, 0));
+  const bolt = g.weather.bolts.at(-1);
+  // Move it so it lands ~700 m straight ahead.
+  const up = g.player.pos.clone().normalize();
+  const target = at.normalize().multiplyScalar(b.groundRadius(at.clone().normalize()));
+  bolt.group.position.add(target.sub(bolt.group.children[0].geometry.parameters.path.curves.at(-1).v2));
+  return { bolts: g.weather.bolts.length, up: !!up };
+};
+// Ship high above the planet with a swarm of meteoroids crossing ahead.
+window.__scenes.rocks = () => {
+  const g = window.__game, s = g.ship;
+  g.enterShipFromOutside();
+  g.sitInPilotSeat();
+  if (g.cameraMode !== 'third') g.toggleView();
+  g.hud.bannerQueue.length = 0;
+  s.landed = false;
+  const up = s.root.position.clone().normalize();
+  s.root.position.copy(up).multiplyScalar(s.body.radius + s.body.atmoHeight * 2.2);
+  s.vel.set(0, 0, 0);
+  s.throttle = 0;
+  g.simulate(0.5, 1 / 30);
+  const fwd = new up.constructor(0, 0, -1).applyQuaternion(s.root.quaternion);
+  const right = new up.constructor(1, 0, 0).applyQuaternion(s.root.quaternion);
+  const frame = s.root.parent;
+  for (let i = 0; i < 3; i++) {
+    g.meteors.spawn(s, frame);
+    const m = g.meteors.pool.filter((p) => p.active).at(-1);
+    m.root.position.copy(s.root.position).addScaledVector(fwd, 220 + i * 140).addScaledVector(right, -120 + i * 110).addScaledVector(up, 25 - i * 20);
+    m.vel.copy(right).multiplyScalar(260).addScaledVector(fwd, 60);
+    m.life = 2;
+  }
+  g.simulate(0.2, 1 / 30);
+  return { active: g.meteors.pool.filter((p) => p.active).length, inAtmo: s.inAtmosphere() };
+};

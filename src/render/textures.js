@@ -40,7 +40,7 @@ function toArray(images, srgb) {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = true;
-  tex.anisotropy = 4;
+  tex.anisotropy = aniso;
   tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   tex.needsUpdate = true;
   return tex;
@@ -61,6 +61,18 @@ export async function loadTerrainTextures() {
 
 const loader = new THREE.TextureLoader();
 const cache = new Map();
+let aniso = 4;
+
+// Anisotropic filtering for every PBR and terrain texture (per preset).
+export function setAnisotropy(n) {
+  if (n === aniso) return;
+  aniso = n;
+  for (const t of [...cache.values(), terrainTextures.detail, terrainTextures.normal]) {
+    if (!t) continue;
+    t.anisotropy = n;
+    t.needsUpdate = true;
+  }
+}
 
 // Standard PBR texture (albedo sRGB, others linear) with repeat wrapping.
 export function texture(name, { srgb = false, repeat = 1 } = {}) {
@@ -69,7 +81,7 @@ export function texture(name, { srgb = false, repeat = 1 } = {}) {
   const t = loader.load(BASE + name, undefined, undefined, () => log.warn(`texture ${name} failed`));
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeat, repeat);
-  t.anisotropy = 4;
+  t.anisotropy = aniso;
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   cache.set(key, t);
   return t;

@@ -434,7 +434,12 @@ export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
         float shore = 1.0 - smoothstep(0.0, 2.2, vDepth);
         float bands = smoothstep(0.55, 0.95, sin(vDepth * 5.0 - uTime * 1.4 + n1 * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.0, 1.6, vDepth));
         float edge = 1.0 - smoothstep(0.0, 0.35, vDepth);
-        float foam = clamp(max(crestFoam, (bands * 0.9 + edge) * shore) * (0.55 + n2 * 0.6), 0.0, 1.0);
+        // Wind-driven foam streaks drift across open water: the sea visibly flows.
+        vec2 flow = vec2(0.8, 0.6);
+        vec2 sUV = vec2(dot(wUV, flow), dot(wUV, vec2(-flow.y, flow.x)));
+        float drift = wNoise(vec2(sUV.x * 0.012 - uTime * 0.05, sUV.y * 0.06)) * wNoise(vec2(sUV.x * 0.03 - uTime * 0.09, sUV.y * 0.15 + 3.0));
+        float streak = smoothstep(0.42, 0.7, drift) * smoothstep(1.5, 6.0, depth) * (1.0 - smoothstep(250.0, 700.0, wDist)) * 0.4;
+        float foam = clamp(max(max(crestFoam, streak * (0.4 + n2)), (bands * 0.9 + edge) * shore) * (0.55 + n2 * 0.6), 0.0, 1.0);
         // Water's own albedo is dark: its colour comes from absorption, the
         // sea floor showing through and reflections.
         diffuseColor.rgb = mix(waterCol * 0.1, vec3(0.93, 0.97, 1.0), foam);
