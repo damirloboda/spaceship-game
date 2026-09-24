@@ -228,10 +228,14 @@ export function createCloudMaterial({ color = [1, 1, 1], octaves = 3, coverage =
         float n = 0.0; float amp = 0.55; float f = 1.0;
         for (int i = 0; i < OCTAVES; i++) { n += snoise(p * f) * amp; f *= 2.3; amp *= 0.5; }
         float cov = mix(uCoverage, 0.95, uStorm);
-        float d = smoothstep(1.0 - cov - 0.25, 1.0 - cov + 0.35, n * 0.5 + 0.5);
+        // Distinct cloud masses with clear sky between them, so land and sea
+        // read from orbit; fine noise erodes the edges into wisps.
+        float erode = snoise(p * 9.0 + 3.1) * 0.08;
+        float d = smoothstep(1.0 - cov - 0.06, 1.0 - cov + 0.2, n * 0.5 + 0.5 + erode);
         if (d < 0.01) discard;
         float light = clamp(dot(vN, uSun) * 1.3 + 0.2, 0.03, 1.0);
-        vec3 c = uColor * light * mix(1.0, 0.45, uStorm);
+        // Thin edges are bright, thick cores a touch darker (self-shadowing).
+        vec3 c = uColor * light * mix(1.0, 0.45, uStorm) * mix(1.05, 0.82, d * d);
         float rim = clamp(dot(vN, uSun), 0.0, 1.0);
         c += vec3(1.0, 0.55, 0.3) * pow(1.0 - abs(dot(vN, uSun)), 8.0) * 0.3 * step(0.0, dot(vN, uSun) + 0.2);
         gl_FragColor = vec4(c, d * 0.85 * uFade);
@@ -459,6 +463,8 @@ export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
           vec3 r3 = texture2D(uRipple, wUV * 0.023 + vec2(-uTime * 0.006, uTime * 0.009)).xyz * 2.0 - 1.0;
           vec3 r4 = texture2D(uRipple, wUV * 0.0061 + vec2(uTime * 0.0023, -uTime * 0.0017)).xyz * 2.0 - 1.0;
           vec2 slope = (r1.xy * 0.8 + r2.xy * 0.5) * rf + r3.xy * 0.55 + r4.xy * 0.45;
+          // Far away the ripples average out (no sub-pixel sparkle).
+          slope *= mix(1.0, 0.3, smoothstep(400.0, 3000.0, wDist));
           vec3 nL = normalize(normalize(vWN) - (wT * slope.x + wB * slope.y) * (1.0 - foam * 0.7));
           wNL = nL;
           normal = normalize(normalMatrix * nL);
@@ -474,7 +480,10 @@ export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
           // Microfacet shadowing keeps rough water from mirroring at grazing angles.
           float F = 0.02 + 0.68 * pow(1.0 - max(dot(V, wNL), 0.0), 5.0);
           float sd = max(dot(R, uSunL), 0.0);
-          float glint = pow(sd, 1200.0) * 90.0 + pow(sd, 90.0) * 2.0 + pow(sd, 12.0) * 0.12;
+          // Sharp glitter up close; a soft sun path in the distance (the sharp
+          // lobe aliases into blocky sparkles through bloom far away).
+          float gNear = 1.0 - smoothstep(150.0, 1200.0, wDist);
+          float glint = pow(sd, 1200.0) * 90.0 * gNear + pow(sd, 90.0) * mix(0.8, 2.0, gNear) + pow(sd, 12.0) * 0.12;
           totalEmissiveRadiance += (skyR * F + uSunC * glint * (0.25 + F)) * (1.0 - foam) * (1.0 - smoothstep(-0.2, 0.3, -vDepth));
         }`);
   };

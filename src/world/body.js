@@ -152,7 +152,7 @@ export class Body {
       this.anchor.add(this.atmo);
       if (q.clouds > 0 && def.type !== 'barren') {
         const cloudR = this.radius + Math.min(this.atmoHeight * 0.45, 1800);
-        const cmat = createCloudMaterial({ color: def.type === 'toxic' ? [0.8, 0.95, 0.6] : def.type === 'lava' ? [0.4, 0.35, 0.33] : [1, 1, 1], octaves: q.clouds + 1, coverage: def.type === 'cloud' ? 0.8 : 0.45 });
+        const cmat = createCloudMaterial({ color: def.type === 'toxic' ? [0.8, 0.95, 0.6] : def.type === 'lava' ? [0.4, 0.35, 0.33] : [1, 1, 1], octaves: q.clouds + 1, coverage: def.type === 'cloud' ? 0.8 : 0.4 });
         this.cloudMaterial = cmat;
         this.clouds = new THREE.Mesh(new THREE.SphereGeometry(cloudR, 128, 64), cmat);
         this.clouds.renderOrder = 6;

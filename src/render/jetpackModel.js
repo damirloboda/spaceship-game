@@ -1,8 +1,10 @@
-// The player's jetpack: a detailed procedural model (carbon backplate, white
-// shell, chrome tanks, bell nozzles with glowing rings, unfolding stabiliser
+// The player's jetpack: a detailed procedural model (carbon-fibre backplate,
+// painted gunmetal shell with a printed label and gauge, brushed steel tanks
+// with feed lines, bell nozzles with glowing rings, unfolding stabiliser
 // fins, fuel LEDs), a two-layer plasma flame, a light that washes the ground,
 // and particle sparks, smoke and ground dust.
 import * as THREE from 'three';
+import { carbonMaterial, brushedMetal, paintedPanel, decalMaterial, gaugeMaterial } from './materialsLib.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createExhaustMaterial, V_HEAD, V_TAIL, F_HEAD, F_DEPTH, F_TAIL } from './shaders.js';
 
@@ -139,9 +141,11 @@ function plasmaCoreMaterial() {
 export function buildJetpack(accent = new THREE.Color(0x39d0ff)) {
   const root = new THREE.Group();
   root.name = 'jetpack';
-  const carbon = new THREE.MeshStandardMaterial({ color: 0x1a1e25, metalness: 0.55, roughness: 0.32, envMapIntensity: 1.3 });
-  const shell = new THREE.MeshStandardMaterial({ color: 0xeef2f6, metalness: 0.1, roughness: 0.28, envMapIntensity: 1.2 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xd9dde3, metalness: 1.0, roughness: 0.14, envMapIntensity: 1.6 });
+  const carbon = carbonMaterial(2.5);
+  const shell = paintedPanel(0x59616d, 0.6);
+  const chrome = brushedMetal(0xc8cdd5, 0.22);
+  const finMat = carbonMaterial(1.5);
+  finMat.side = THREE.DoubleSide;
   const darkMetal = new THREE.MeshStandardMaterial({ color: 0x2c2f35, metalness: 0.9, roughness: 0.35, side: THREE.DoubleSide });
   const glowMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: accent.clone(), emissiveIntensity: 1.2, roughness: 0.4 });
   const heatMat = new THREE.MeshStandardMaterial({ color: 0x220800, emissive: new THREE.Color(1.0, 0.35, 0.08), emissiveIntensity: 0, roughness: 0.5 });
@@ -190,7 +194,7 @@ export function buildJetpack(accent = new THREE.Color(0x39d0ff)) {
   for (const side of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(side * 0.23, 0.16, 0.02);
-    const f = new THREE.Mesh(finGeo, shell);
+    const f = new THREE.Mesh(finGeo, finMat);
     f.scale.x = side;
     f.castShadow = true;
     pivot.add(f);
@@ -200,6 +204,30 @@ export function buildJetpack(accent = new THREE.Color(0x39d0ff)) {
     pivot.add(stripe);
     root.add(pivot);
     fins.push({ pivot, side });
+  }
+  // Printed label with a hazard stripe, a pressure gauge, rivets and the
+  // braided feed lines from the tanks down to the thrusters.
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.07), decalMaterial({ lines: ['JX-7', 'N2O 3000 PSI', 'SER 0417-A'], accent: '#' + accent.getHexString(), hazard: true }));
+  label.position.set(0.085, 0.13, 0.1165);
+  root.add(label);
+  const gauge = new THREE.Group();
+  gauge.add(new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.018, 24), chrome));
+  const face = new THREE.Mesh(new THREE.CircleGeometry(0.03, 24), gaugeMaterial('#' + accent.getHexString()));
+  face.rotation.x = -Math.PI / 2; face.position.y = 0.0095;
+  gauge.add(face);
+  gauge.rotation.x = Math.PI / 2 - 0.25;
+  gauge.position.set(-0.085, 0.16, 0.125);
+  root.add(gauge);
+  const rivetGeo = new THREE.SphereGeometry(0.007, 8, 6);
+  for (const [x, y] of [[-0.15, 0.22], [0.15, 0.22], [-0.15, -0.16], [0.15, -0.16], [0, 0.22], [0, -0.16]]) add(rivetGeo, chrome, x, y, 0.117);
+  const lineMat = new THREE.MeshStandardMaterial({ color: 0x30343b, metalness: 0.6, roughness: 0.45 });
+  for (const side of [-1, 1]) {
+    const path = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(side * 0.2, -0.17, 0.1), new THREE.Vector3(side * 0.2, -0.22, 0.12),
+      new THREE.Vector3(side * 0.16, -0.26, 0.1), new THREE.Vector3(side * 0.13, -0.27, 0.08),
+    ]);
+    add(new THREE.TubeGeometry(path, 16, 0.011, 8, false), lineMat, 0, 0, 0);
+    add(new THREE.CylinderGeometry(0.016, 0.016, 0.02, 12), chrome, side * 0.2, -0.165, 0.1);
   }
   // Antenna and fuel LEDs
   add(new THREE.CylinderGeometry(0.006, 0.008, 0.16, 6), darkMetal, 0.16, 0.34, -0.02);

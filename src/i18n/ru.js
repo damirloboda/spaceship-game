@@ -83,6 +83,7 @@ export default {
   'hud.hull': 'Корпус',
   'hud.shield': 'Щит',
   'hud.alt': 'ВЫС',
+  'hud.pull_up': 'ЗЕМЛЯ — АВТОПОДЪЁМ',
   'hud.land_slow': 'Слишком быстро для посадки — сбавь скорость',
   'hud.vspeed': 'ВЕРТ',
   'hud.land_guide': 'Снижайся медленно и ровно — корабль сядет сам',

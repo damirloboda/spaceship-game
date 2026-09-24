@@ -88,6 +88,7 @@ export default {
   'hud.hull': 'Hull',
   'hud.shield': 'Shield',
   'hud.alt': 'ALT',
+  'hud.pull_up': 'TERRAIN — PULLING UP',
   'hud.land_slow': 'Too fast to land — slow down',
   'hud.vspeed': 'V/S',
   'hud.land_guide': 'Descend slowly and level — the ship lands itself',

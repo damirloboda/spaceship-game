@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { Particles } from '../render/jetpackModel.js';
 import { buildShip, GEAR_HEIGHT, RAMP_OPEN, RAMP_CLOSED } from '../render/shipModel.js';
 import { FLIGHT } from '../game/shipSystems.js';
+import { V_HEAD, V_TAIL, F_HEAD, F_DEPTH } from '../render/shaders.js';
+import { tailMaterial, TAIL_GEO } from '../render/meteors.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const FWD = new THREE.Vector3(0, 0, -1);
@@ -34,6 +36,16 @@ export class Ship {
     this.speed = 0;
     this.altitude = Infinity;
     this.shake = 0;
+    this.entryHeat = 0;
+    this.plasma = buildPlasma();
+    this.root.add(this.plasma);
+    // Burning wake streaming behind the ship during re-entry.
+    this.wake = new THREE.Mesh(TAIL_GEO, tailMaterial([1, 0.45, 0.15], 1.4));
+    this.wake.scale.set(8, 4.5, 20);
+    this.wake.frustumCulled = false;
+    this.wake.visible = false;
+    this.wake.renderOrder = 4;
+    this.root.add(this.wake);
   }
 
   get systems() {
@@ -184,6 +196,49 @@ export class Ship {
       if (sys.isBroken('engine') || res.noFuel) {
         this.vel.addScaledVector(radial, -g * 0.55 * dt);
         if (inAtmo) this.emergency = true;
+      }
+    }
+    // Atmospheric entry: thick air brakes anything faster than the
+    // atmospheric limit within a couple of seconds (with re-entry plasma),
+    // and the closing speed toward the ground never exceeds a ~2 s glide,
+    // so arriving from space always ends in a controlled approach.
+    this.entryHeat = Math.max(0, (this.entryHeat || 0) - dt * 0.8);
+    this.pullUp = false;
+    if (this.body) {
+      const dir = this.root.position.clone().normalize();
+      const alt = Math.max(0, this.altitude);
+      const sp = this.vel.length();
+      if (inAtmo && sp > res.maxSpeed * 1.05) {
+        const target = Math.max(res.maxSpeed, sp * Math.exp(-1.6 * dt));
+        this.vel.multiplyScalar(target / sp);
+        this.entryHeat = Math.min(1, Math.max(this.entryHeat, (sp - res.maxSpeed) / 900));
+        this.shake = Math.max(this.shake, this.entryHeat * 0.5);
+      }
+      if (alt < 30000) {
+        const vRad = this.vel.dot(dir);
+        const lim = alt * 0.5 + 12;
+        if (vRad < -lim) this.vel.addScaledVector(dir, -lim - vRad);
+      }
+      // Terrain ahead at speed: automatic pull-up.
+      const hv = this.vel.clone().addScaledVector(dir, -this.vel.dot(dir)).length();
+      if (hv > 50 && alt < 3000) {
+        for (const t of [0.8, 2]) {
+          const p = this.root.position.clone().addScaledVector(this.vel, t);
+          const r = p.length();
+          const clear = r - this.body.surfaceRadius(p.divideScalar(r)) - GEAR_HEIGHT;
+          if (clear < 8) {
+            const need = (8 - clear) / t;
+            this.vel.addScaledVector(dir, Math.min(need, 160 * dt + need * dt * 3));
+            this.alignUp(dir, null, Math.min(1, dt * 2));
+            this.pullUp = true;
+            break;
+          }
+        }
+        if (this.pullUp && (!this.pullUpT || performance.now() - this.pullUpT > 3500)) {
+          this.pullUpT = performance.now();
+          game.hud.toast('hud.pull_up', 'warn');
+          game.audio?.play('alarm');
+        }
       }
     }
     // Ground-proximity assist: near the surface the ship levels itself and
@@ -557,6 +612,23 @@ export class Ship {
   // Navigation lights, strobe, engine glow on the ground, landing dust and
   // wingtip vapour trails.
   updateFx(dt, thrust, flying) {
+    // Re-entry plasma sheath on the leading side.
+    const heat = this.entryHeat || 0;
+    this.plasma.visible = heat > 0.02;
+    if (this.plasma.visible) {
+      const u = this.plasma.material.uniforms;
+      u.uHeat.value = heat;
+      u.uTime.value += dt;
+      if (this.vel.lengthSq() > 1) u.uDir.value.copy(this.vel).normalize().applyQuaternion(tq.copy(this.root.quaternion).invert());
+      // Wake: the cone's +Z points along the flight path, its tip trails behind.
+      this.wake.quaternion.setFromUnitVectors(tv.set(0, 0, 1), u.uDir.value);
+      this.wake.position.copy(u.uDir.value).multiplyScalar(4);
+      const wu = this.wake.material.uniforms;
+      wu.uAlpha.value = heat * 0.4;
+      wu.uTime.value += dt;
+      this.wake.scale.z = 10 + heat * 12;
+    }
+    this.wake.visible = this.plasma.visible;
     const m = this.model;
     const t = (this.fxT = (this.fxT || 0) + dt);
     const blink = (t % 1.4) < 0.12;
@@ -613,4 +685,45 @@ export class Ship {
       throttle: this.throttle,
     };
   }
+}
+
+// Glowing shell around the hull, brightest where the air hits it.
+function buildPlasma() {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uHeat: { value: 0 }, uTime: { value: 0 }, uDir: { value: new THREE.Vector3(0, 0, -1) } },
+    vertexShader: V_HEAD + /* glsl */`
+      varying vec3 vN; varying vec3 vV; varying vec3 vP;
+      void main(){
+        vP = normalize(position);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * normal);
+        vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+        ${V_TAIL}
+      }`,
+    fragmentShader: F_HEAD + /* glsl */`
+      uniform float uHeat; uniform float uTime; uniform vec3 uDir;
+      varying vec3 vN; varying vec3 vV; varying vec3 vP;
+      void main(){
+        ${F_DEPTH}
+        float front = smoothstep(-0.2, 0.9, dot(vP, uDir));
+        float rim = pow(1.0 - abs(dot(vN, vV)), 2.0);
+        float flick = 0.75 + 0.25 * sin(dot(vP, vec3(13.0, 7.0, 11.0)) + uTime * 25.0) * sin(vP.z * 9.0 - uTime * 17.0);
+        float lead = smoothstep(-1.0, 1.0, dot(vP, uDir));
+        float a = (rim * (0.35 + 0.65 * lead) + front * 0.5) * flick * uHeat;
+        vec3 col = mix(vec3(1.0, 0.35, 0.08), vec3(1.0, 0.85, 0.6), front * uHeat);
+        gl_FragColor = vec4(col * 2.5, a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), mat);
+  m.scale.set(10, 5.5, 14);
+  m.position.set(0, 1.5, -1);
+  m.visible = false;
+  m.frustumCulled = false;
+  m.renderOrder = 4;
+  return m;
 }

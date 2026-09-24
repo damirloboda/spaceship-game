@@ -159,6 +159,28 @@ try {
     return { landed: s.landed, alt: Math.round(s.altitude), dmg: +(hp - g.state.ship.modules.hull.hp).toFixed(1) };
   });
   check('nose-down approach lands without crashing', dive.landed && dive.dmg < 5, JSON.stringify(dive));
+  // 10. Full-throttle dive from 20 km: entry braking and the sink-rate cap
+  // must bring it down to the ground without damage.
+  const entry = await ev(() => {
+    const g = window.__game, s = g.ship;
+    s.landed = false;
+    const up = s.root.position.clone().normalize();
+    s.root.position.copy(up).multiplyScalar(s.body.radius + 20000);
+    s.alignUp(up, null, 1);
+    s.root.rotateX(-1.45);
+    s.throttle = 1;
+    s.vel.set(0, 0, -2400).applyQuaternion(s.root.quaternion);
+    const hp = g.state.ship.modules.hull.hp;
+    let heat = 0, minAlt = Infinity;
+    for (let i = 0; i < 60 * 30 && !s.landed; i++) {
+      g.simulate(1 / 30, 1 / 30);
+      heat = Math.max(heat, s.entryHeat);
+      minAlt = Math.min(minAlt, s.altitude);
+      if (s.altitude < 60) s.throttle = 0;
+    }
+    return { landed: s.landed, heat: +heat.toFixed(2), dmg: +(hp - g.state.ship.modules.hull.hp).toFixed(1), alt: Math.round(s.altitude) };
+  });
+  check('20 km full-throttle dive: re-entry braking, no crash', entry.dmg < 5 && entry.heat > 0.3 && (entry.landed || entry.alt > -1), JSON.stringify(entry));
 } catch (e) {
   check('no exception', false, e.message);
   await page.screenshot({ path: `${OUT}/gp-fail.png` }).catch(() => {});

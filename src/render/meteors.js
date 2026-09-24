@@ -25,7 +25,7 @@ function glowTexture() {
   return t;
 }
 
-function tailMaterial(color, power) {
+export function tailMaterial(color, power) {
   return new THREE.ShaderMaterial({
     uniforms: { uColor: { value: new THREE.Color(...color) }, uAlpha: { value: 1 }, uTime: { value: 0 } },
     vertexShader: V_HEAD + /* glsl */`
@@ -56,7 +56,7 @@ function tailMaterial(color, power) {
 }
 
 // Unit cone: radius 1 at the origin, tip at z = -1.
-const TAIL_GEO = new THREE.CylinderGeometry(0, 1, 1, 16, 8, true).translate(0, 0.5, 0).rotateX(-Math.PI / 2);
+export const TAIL_GEO = new THREE.CylinderGeometry(0, 1, 1, 16, 8, true).translate(0, 0.5, 0).rotateX(-Math.PI / 2);
 
 export class SpaceMeteors {
   constructor(game, count = 6) {

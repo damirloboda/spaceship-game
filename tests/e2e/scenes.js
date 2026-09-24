@@ -144,3 +144,27 @@ window.__scenes.rocks = () => {
   g.simulate(0.2, 1 / 30);
   return { active: g.meteors.pool.filter((p) => p.active).length, inAtmo: s.inAtmosphere() };
 };
+// Dive at the planet from 20 km at full throttle; call step(secs) to advance.
+window.__scenes.approach = (alt = 20000, pitch = 1.45) => {
+  const g = window.__game, s = g.ship;
+  g.enterShipFromOutside();
+  g.sitInPilotSeat();
+  if (g.cameraMode !== 'third') g.toggleView();
+  g.hud.bannerQueue.length = 0;
+  s.landed = false;
+  const up = s.root.position.clone().normalize();
+  s.root.position.copy(up).multiplyScalar(s.body.radius + alt);
+  s.alignUp(up, null, 1);
+  s.root.rotateX(-pitch);
+  s.throttle = 1;
+  s.vel.set(0, 0, -2400).applyQuaternion(s.root.quaternion);
+  window.__hp0 = g.state.ship.modules.hull.hp;
+  return { alt: Math.round(s.altitude) };
+};
+window.__scenes.step = (secs = 2) => {
+  const g = window.__game, s = g.ship;
+  let minAlt = Infinity, maxHeat = 0;
+  const n = Math.round(secs * 30);
+  for (let i = 0; i < n; i++) { g.simulate(1 / 30, 1 / 30); minAlt = Math.min(minAlt, s.altitude); maxHeat = Math.max(maxHeat, s.entryHeat); }
+  return { alt: Math.round(s.altitude), speed: Math.round(s.speed), heat: +maxHeat.toFixed(2), landed: s.landed, dmg: +(window.__hp0 - g.state.ship.modules.hull.hp).toFixed(1), pending: s.body?.terrain.stats.pending };
+};

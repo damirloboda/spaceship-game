@@ -83,6 +83,7 @@ export default {
   'hud.hull': 'Gövde',
   'hud.shield': 'Kalkan',
   'hud.alt': 'İRT',
+  'hud.pull_up': 'ARAZİ — OTOMATİK YÜKSELİŞ',
   'hud.land_slow': 'İniş için çok hızlı — yavaşla',
   'hud.vspeed': 'D/H',
   'hud.land_guide': 'Yavaşça ve düz alçal — gemi kendisi iner',

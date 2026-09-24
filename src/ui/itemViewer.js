@@ -4,14 +4,15 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { buildJetpack } from '../render/jetpackModel.js';
+import { carbonMaterial, brushedMetal, paintedPanel, decalMaterial, gaugeMaterial } from '../render/materialsLib.js';
 import { itemDef } from '../game/items.js';
 
 const M = {
-  chrome: () => new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 1, roughness: 0.12 }),
-  dark: () => new THREE.MeshStandardMaterial({ color: 0x23272e, metalness: 0.7, roughness: 0.3 }),
-  paint: (c) => new THREE.MeshStandardMaterial({ color: c, metalness: 0.25, roughness: 0.3 }),
+  chrome: () => brushedMetal(0xd3d8df, 0.18),
+  dark: () => carbonMaterial(2),
+  paint: (c) => paintedPanel(c, 0.8),
   glow: (c, i = 2) => new THREE.MeshStandardMaterial({ color: 0x111111, emissive: new THREE.Color(c), emissiveIntensity: i }),
-  glass: (c) => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0, roughness: 0.05, transmission: 0.6, transparent: true, opacity: 0.7, clearcoat: 1 }),
+  glass: (c) => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0, roughness: 0.05, transmission: 0.6, transparent: true, opacity: 0.22, clearcoat: 1 }),
 };
 
 function mesh(geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
@@ -25,13 +26,23 @@ function nitroTank() {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.62, 32), M.chrome()));
   g.add(mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.36, 32, 1, true, -0.6, 1.2), M.glass(0x88e8ff)));
-  g.add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.34, 32), M.glow(0x2bc8ff, 2.6)));
+  g.add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.34, 32), M.glow(0x1aa8ff, 3.4)));
   for (const y of [-0.33, 0.33]) g.add(mesh(new THREE.CylinderGeometry(0.21, 0.18, 0.06, 32), M.dark(), 0, y));
   g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.1, 16), M.dark(), 0, 0.41));
   g.add(mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 20), M.chrome(), 0, 0.47, 0, Math.PI / 2));
   for (const y of [-0.22, 0.22]) g.add(mesh(new THREE.TorusGeometry(0.203, 0.012, 8, 40), M.glow(0x39d0ff, 3), 0, y, 0, Math.PI / 2));
-  // Hazard band
-  g.add(mesh(new THREE.CylinderGeometry(0.202, 0.202, 0.05, 32, 1, true, 1.2, 4.4), M.paint(0xffb13d), 0, -0.26));
+  // Wrap-around label on the back half, gauge and a valve handwheel on top.
+  g.add(mesh(new THREE.CylinderGeometry(0.203, 0.203, 0.3, 32, 1, true, 1.3, 3.7), decalMaterial({ lines: ['NITRO', 'N2O  LIQUID', 'MAX 3000 PSI', 'KEEP COOL'], accent: '#ffb13d', hazard: true, w: 512, h: 160 })));
+  const gauge = new THREE.Group();
+  gauge.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.025, 24), M.chrome()));
+  gauge.add(mesh(new THREE.CircleGeometry(0.043, 24), gaugeMaterial(), 0, 0.0135, 0, -Math.PI / 2));
+  gauge.position.set(0.1, 0.4, 0.06); gauge.rotation.set(0.5, 0, -0.4);
+  g.add(gauge);
+  g.add(mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.1, 8), M.chrome(), 0.06, 0.38, 0.03, 0, 0, -0.9));
+  g.add(mesh(new THREE.TorusGeometry(0.075, 0.009, 8, 32), new THREE.MeshStandardMaterial({ color: 0xc0392b, metalness: 0.3, roughness: 0.4 }), 0, 0.53, 0, Math.PI / 2));
+  for (let i = 0; i < 3; i++) g.add(mesh(new THREE.BoxGeometry(0.15, 0.008, 0.008), M.chrome(), 0, 0.53, 0, 0, (i * Math.PI) / 3));
+  // Frost on the lower dome from the cold liquid inside.
+  g.add(mesh(new THREE.SphereGeometry(0.2, 32, 12, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), new THREE.MeshStandardMaterial({ color: 0xeaf6ff, roughness: 0.9, transparent: true, opacity: 0.35 }), 0, -0.17));
   return g;
 }
 
@@ -127,25 +138,52 @@ export class ItemViewer {
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
       this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 0.92;
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       this.ok = true;
     } catch { return; }
     this.scene = new THREE.Scene();
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.camera = new THREE.PerspectiveCamera(32, 2, 0.05, 50);
-    this.camera.position.set(0, 0.55, 2.7);
+    this.scene.environmentIntensity = 0.55;
+    this.camera = new THREE.PerspectiveCamera(30, 2, 0.05, 50);
+    this.camera.position.set(0, 0.5, 2.8);
     this.camera.lookAt(0, 0.0, 0);
-    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 3, 2);
-    const rim = new THREE.DirectionalLight(0x6fd6ff, 2.5); rim.position.set(-2, 1.5, -2.5);
-    this.scene.add(key, rim, new THREE.AmbientLight(0x404a60, 0.6));
-    // Pedestal with a glowing ring
-    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.06, 64), new THREE.MeshStandardMaterial({ color: 0x151a22, metalness: 0.8, roughness: 0.25 }));
+    // Studio lighting: a soft top spot with contact shadows, a cool rim
+    // from behind and a warm low fill.
+    const key = new THREE.SpotLight(0xfff4e8, 26, 8, 0.42, 0.7, 1.6);
+    key.position.set(0.9, 3.2, 1.4);
+    key.target.position.set(0, -0.2, 0);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.radius = 6;
+    key.shadow.bias = -0.0004;
+    const rim = new THREE.DirectionalLight(0x7fd8ff, 2.2); rim.position.set(-2, 1.6, -2.5);
+    const fill = new THREE.DirectionalLight(0xffb27a, 0.5); fill.position.set(2, -0.2, 2);
+    this.scene.add(key, key.target, rim, fill, new THREE.AmbientLight(0x3a4458, 0.35));
+    // Glossy pedestal with a glowing ring
+    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.06, 64), new THREE.MeshPhysicalMaterial({ color: 0x10141a, metalness: 0.6, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05 }));
     ped.position.y = -0.52;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.01, 8, 96), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: new THREE.Color(0x39d0ff), emissiveIntensity: 3 }));
-    ring.rotation.x = Math.PI / 2; ring.position.y = -0.48;
+    ped.receiveShadow = true;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.008, 8, 96), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: new THREE.Color(0x39d0ff), emissiveIntensity: 3 }));
+    ring.rotation.x = Math.PI / 2; ring.position.y = -0.485;
     this.ringMat = ring.material;
-    this.scene.add(ped, ring);
+    // Light beam from the spot and dust drifting through it.
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.62, 3, 32, 1, true), new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: 'varying float vY; varying vec3 vN; varying vec3 vV; void main(){ vY = uv.y; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying float vY; varying vec3 vN; varying vec3 vV; void main(){ float e = pow(abs(dot(vN, vV)), 1.5); gl_FragColor = vec4(vec3(1.0, 0.95, 0.88), e * 0.07 * (0.25 + vY * 0.75)); }',
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    beam.position.y = 1.0;
+    const dustGeo = new THREE.BufferGeometry();
+    const dp = new Float32Array(120 * 3);
+    for (let i = 0; i < 120; i++) dp.set([(Math.random() - 0.5) * 1.3, Math.random() * 2 - 0.5, (Math.random() - 0.5) * 1.3], i * 3);
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+    this.dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xfff1dd, size: 0.012, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.scene.add(ped, ring, beam, this.dust);
     this.holder = new THREE.Group();
     this.scene.add(this.holder);
     this.id = null;
@@ -171,6 +209,7 @@ export class ItemViewer {
     obj.scale.multiplyScalar(1.05 / Math.max(0.1, size));
     const c = solid(obj).getCenter(new THREE.Vector3());
     obj.position.sub(c).add(new THREE.Vector3(0, 0.12, 0));
+    obj.traverse((m) => { if (m.isMesh && !m.material.isShaderMaterial && !m.material.transparent) m.castShadow = true; });
     this.holder.add(obj);
     this.tick = tick || null;
     this.ringMat.emissive.set(itemDef(id).color || '#39d0ff');
@@ -187,7 +226,13 @@ export class ItemViewer {
       this.camera.aspect = w / hgt;
       this.camera.updateProjectionMatrix();
     }
-    this.holder.rotation.y += dt * 0.6;
+    this.holder.rotation.y += dt * 0.5;
+    this.dust.rotation.y += dt * 0.05;
+    this.dust.position.y = Math.sin(now / 4000) * 0.05;
+    // Slow breathing camera orbit.
+    const a = Math.sin(now / 5200) * 0.18;
+    this.camera.position.set(Math.sin(a) * 2.8, 0.5 + Math.sin(now / 3700) * 0.05, Math.cos(a) * 2.8);
+    this.camera.lookAt(0, 0, 0);
     this.holder.position.y = Math.sin(now / 900) * 0.02;
     this.tick?.(dt);
     this.renderer.render(this.scene, this.camera);

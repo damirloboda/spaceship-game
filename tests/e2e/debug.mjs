@@ -11,7 +11,7 @@ const OUT = resolve('tests/e2e/out');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const srv = await new Promise((ok) => { const s = createServer(async (req, res) => { try { const url = decodeURIComponent(req.url.split('?')[0]); const f = join(ROOT, url === '/' ? 'index.html' : url); const d = await readFile(f); res.writeHead(200, { 'content-type': TYPES[extname(f)] || 'application/octet-stream' }); res.end(d); } catch { res.writeHead(404); res.end(); } }); s.listen(0, () => ok(s)); });
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const vp = process.env.MOBILE ? { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1280, height: 720 } };
+const vp = process.env.PORTRAIT ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : process.env.MOBILE ? { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1280, height: 720 } };
 const page = await browser.newPage(vp);
 await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', async (route) => { const rel = route.request().url().split('three@0.170.0/')[1]; try { route.fulfill({ body: await readFile(join(ROOT, 'node_modules/three', rel)), contentType: 'text/javascript' }); } catch { route.abort(); } });
 if (!process.env.FONTS) {
