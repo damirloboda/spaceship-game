@@ -2,6 +2,7 @@
 // deterministic per chunk (same planet = same forest). Rendered with one
 // InstancedMesh per species, rebuilt only when the set of chunks changes.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RNG, hashMix, hashString } from '../core/rng.js';
 import { floraModelFor, staticParts, modelHeight, modelLod, modelCull } from './modelLib.js';
 import { cubeToSphere } from './terrain.js';
@@ -20,6 +21,8 @@ const DEPOSIT_WEIGHTS = {
   default: { ferrite: 4, carbon: 2, cobalt: 1.5, oxyite: 1, aurum: 0.4 },
 };
 
+// How lush groves get per biome (0 = none).
+const GROVE_BIOMES = { forest: 1.4, grassland: 0.8, savanna: 0.5, wetland: 0.7, tundra: 0.35, fungal: 1.2, sporefield: 0.8, glowmoss: 0.9, mire: 0.6 };
 const BARE_BIOMES = new Set(['seabed', 'beach', 'snow', 'glacier', 'lavafield', 'cloudtop']);
 
 export class Scatter {
@@ -111,10 +114,23 @@ export class Scatter {
         lodMeshes[0].instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         lodDist = lod.dist;
       }
+      // Far proxy: a 30-40 triangle silhouette in the tree's own colours.
+      let farMesh = null, farDist = Infinity;
+      if (lodParts?.length && ['conifer', 'broadleaf', 'palm', 'mushroom'].includes(sp.form)) {
+        const geo = treeProxyGeometry(sp.form, lodParts);
+        if (geo) {
+          farMesh = new THREE.InstancedMesh(geo, proxyMaterial(), cap);
+          farMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
+          farMesh.count = 0; farMesh.frustumCulled = false; farMesh.castShadow = false; farMesh.receiveShadow = true;
+          farMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          this.group.add(farMesh);
+          farDist = 300 + 250 * density;
+        }
+      }
       const cullDist = parts?.length ? modelCull(modelName) : 0;
       // Models are 1 unit tall: instance scale carries the species height.
       const unitScale = parts?.length ? (modelHeight(modelName) ?? sp.height) : 1;
-      return { def: sp, pref, mesh, meshes, lodMeshes, lodDist, cullDist, cap, index: i, unitScale, model: parts?.length ? modelName : null };
+      return { def: sp, pref, mesh, meshes, lodMeshes, lodDist, farMesh, farDist, cullDist, cap, index: i, unitScale, model: parts?.length ? modelName : null };
     });
     const weights = DEPOSIT_WEIGHTS[body.def.type] || DEPOSIT_WEIGHTS.default;
     this.depositWeights = Object.entries(weights).map(([v, w]) => ({ v, w }));
@@ -153,6 +169,12 @@ export class Scatter {
           transformed.x += sway * position.y;
           transformed.z += sway * 0.6 * position.y;`);
     };
+  }
+
+  // Species that form groves: the tall ones (trees, palms, giant fungi).
+  treeSpecies() {
+    if (!this._trees) this._trees = this.species.filter((sp) => !sp.def.decor && ['conifer', 'broadleaf', 'palm', 'mushroom'].includes(sp.def.form) && sp.def.height > 3);
+    return this._trees;
   }
 
   paved(d) {
@@ -214,6 +236,51 @@ export class Scatter {
         chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc, tint: [tv * (1 + warm), tv, tv * (1 - warm)] });
       }
     }
+    // Groves: trees grow in clusters, so forests read as forests and single
+    // trees stand in the open between them.
+    if (node.level === this.floraLevel && this.treeSpecies().length && this.body.def.life) {
+      const groves = Math.round((9 + rng.next() * 8) * this.density);
+      for (let gi = 0; gi < groves; gi++) {
+        cubeToSphere(node.face, node.u0 + rng.next() * node.size, node.v0 + rng.next() * node.size, d);
+        const h0 = s.heightAt(d[0], d[1], d[2]);
+        if (s.hasOcean && h0 < 3) continue;
+        if (this.paved(d)) continue;
+        const biome = s.biomeAt(d[0], d[1], d[2], h0, 0);
+        const lush = GROVE_BIOMES[biome];
+        if (!lush) continue;
+        const cands = this.treeSpecies().filter((sp) => sp.pref.has(biome) || biome === 'forest');
+        if (!cands.length) continue;
+        // One or two species per grove.
+        const sps = [rng.pick(cands), rng.pick(cands)];
+        const n = Math.round((10 + rng.next() * 22) * lush);
+        const radius = 22 + rng.next() * 50;
+        const c0 = new THREE.Vector3(d[0], d[1], d[2]);
+        const t1 = new THREE.Vector3(0, 1, 0).cross(c0);
+        if (t1.lengthSq() < 1e-6) t1.set(1, 0, 0);
+        t1.normalize();
+        const t2 = c0.clone().cross(t1);
+        for (let k = 0; k < n; k++) {
+          const sp = sps[k % 2];
+          const a = rng.next() * Math.PI * 2, rr = Math.sqrt(rng.next()) * radius;
+          dir.copy(c0).addScaledVector(t1, (Math.cos(a) * rr) / R).addScaledVector(t2, (Math.sin(a) * rr) / R).normalize();
+          const h = s.heightAt(dir.x, dir.y, dir.z);
+          if (s.hasOcean && h < 1.5) continue;
+          d[0] = dir.x; d[1] = dir.y; d[2] = dir.z;
+          if (this.paved(d)) continue;
+          pos.copy(dir).multiplyScalar(R + h - 0.25);
+          q.setFromUnitVectors(UP, dir);
+          yaw.setFromAxisAngle(UP, rng.next() * Math.PI * 2);
+          q.multiply(yaw);
+          // Big old trees in the middle, saplings at the edge.
+          const sc = (0.65 + rng.next() * 0.55) * (1.15 - (rr / radius) * 0.35);
+          const us = sc * sp.unitScale;
+          scale.set(us, us * (0.9 + rng.next() * 0.25), us);
+          m.compose(pos, q, scale);
+          const tv = 0.82 + rng.next() * 0.3, warm = (rng.next() - 0.5) * 0.18;
+          chunk.plants.push({ sp: sp.index, matrix: m.toArray(new Float32Array(16)), pos: pos.clone(), radius: sp.def.collider * sc, tint: [tv * (1 + warm), tv, tv * (1 - warm)] });
+        }
+      }
+    }
     if (node.level === this.depositLevel) {
       const n = 4 + Math.floor(rng.next() * 8);
       for (let i = 0; i < n; i++) {
@@ -247,6 +314,7 @@ export class Scatter {
   rebuild() {
     const counts = this.species.map(() => 0);
     const lodCounts = this.species.map(() => 0);
+    const farCounts = this.species.map(() => 0);
     const dcounts = {};
     for (const t of Object.keys(this.depositMeshes)) dcounts[t] = 0;
     this.activeDeposits = [];
@@ -263,6 +331,14 @@ export class Scatter {
         const sp = this.species[p.sp];
         const d = known ? p.pos.distanceTo(focus) : 0;
         if (sp.cullDist && d > sp.cullDist) continue;
+        if (sp.farMesh && d > sp.farDist) {
+          const c = farCounts[p.sp];
+          if (c >= sp.cap) continue;
+          sp.farMesh.instanceMatrix.array.set(p.matrix, c * 16);
+          sp.farMesh.instanceColor.array.set(p.tint, c * 3);
+          farCounts[p.sp] = c + 1;
+          continue;
+        }
         if (sp.lodMeshes && d > sp.lodDist) {
           const c = lodCounts[p.sp];
           if (c >= sp.cap) continue;
@@ -291,6 +367,11 @@ export class Scatter {
       for (const m of sp.meshes) m.count = counts[i];
       sp.mesh.instanceMatrix.needsUpdate = true;
       if (sp.mesh.instanceColor) sp.mesh.instanceColor.needsUpdate = true;
+      if (sp.farMesh) {
+        sp.farMesh.count = farCounts[i];
+        sp.farMesh.instanceMatrix.needsUpdate = true;
+        sp.farMesh.instanceColor.needsUpdate = true;
+      }
       if (sp.lodMeshes) {
         for (const m of sp.lodMeshes) m.count = lodCounts[i];
         sp.lodMeshes[0].instanceMatrix.needsUpdate = true;
@@ -400,4 +481,59 @@ export class Scatter {
     }
     for (const mesh of Object.values(this.depositMeshes)) { mesh.geometry.dispose(); mesh.material.dispose(); mesh.dispose(); }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Far-distance tree proxies: a trunk plus a crown shaped by form, sized from
+// the model's LOD bounds and coloured from its materials (vertex colours).
+let proxyMat = null;
+function proxyMaterial() {
+  if (!proxyMat) proxyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+  return proxyMat;
+}
+
+function materialColour(parts, re, fallback) {
+  const hit = parts.find((p) => re.test(p.material.name || ''));
+  if (hit?.material.color) return hit.material.color.clone();
+  return new THREE.Color(...fallback);
+}
+
+function paint(geo, c) {
+  const n = geo.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+function treeProxyGeometry(form, parts) {
+  const box = new THREE.Box3();
+  for (const p of parts) { p.geometry.computeBoundingBox(); box.union(p.geometry.boundingBox); }
+  if (box.isEmpty()) return null;
+  const size = box.getSize(new THREE.Vector3());
+  const h = box.max.y, base = box.min.y;
+  const r = Math.max(size.x, size.z) * 0.45;
+  // Leaves: the greenest material; trunk: the brownest.
+  let leaf = null, trunk = null, bestG = -1, bestB = -1;
+  for (const p of parts) {
+    const c = p.material.color;
+    // Textured (photoscanned) materials carry their colour in the map.
+    if (!c || p.material.map) continue;
+    const g = c.g - (c.r + c.b) * 0.5, b = c.r - c.b;
+    if (g > bestG) { bestG = g; leaf = c.clone(); }
+    if (b > bestB && c.r < 0.8) { bestB = b; trunk = c.clone(); }
+  }
+  leaf = leaf || materialColour(parts.filter((p) => !p.material.map), /leaf|leaves|foliage|green/i, form === 'palm' ? [0.42, 0.45, 0.22] : [0.25, 0.42, 0.18]);
+  trunk = trunk || materialColour(parts.filter((p) => !p.material.map), /trunk|wood|bark/i, form === 'palm' ? [0.55, 0.47, 0.36] : [0.33, 0.24, 0.16]);
+  // The proxy is lit flatly; brighten a touch to match the textured models.
+  leaf.multiplyScalar(0.95);
+  const trunkH = form === 'palm' ? 0.75 : form === 'conifer' ? 0.25 : 0.4;
+  const t = new THREE.CylinderGeometry(r * 0.08, r * 0.12, (h - base) * trunkH, 5, 1).translate(0, base + ((h - base) * trunkH) / 2, 0);
+  let crown;
+  if (form === 'conifer') crown = new THREE.ConeGeometry(r, (h - base) * 0.82, 7, 1).translate(0, base + (h - base) * 0.59, 0);
+  else if (form === 'palm') crown = new THREE.ConeGeometry(r, (h - base) * 0.22, 7, 1, true).rotateX(Math.PI).translate(0, base + (h - base) * 0.86, 0);
+  else crown = new THREE.IcosahedronGeometry(1, 0).scale(r, (h - base) * 0.34, r).translate(0, base + (h - base) * 0.66, 0);
+  const g1 = paint(t.toNonIndexed(), trunk), g2 = paint(crown.index ? crown.toNonIndexed() : crown, leaf);
+  for (const g of [g1, g2]) { g.deleteAttribute('uv'); }
+  return mergeGeometries([g1, g2], false);
 }

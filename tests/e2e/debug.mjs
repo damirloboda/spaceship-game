@@ -35,7 +35,8 @@ await page.addScriptTag({ path: resolve('tests/e2e/scenes.js') });
 const scenes = process.argv.slice(2);
 for (let i = 0; i < scenes.length; i += 3) {
   const code = scenes[i], name = scenes[i + 1], wait = Number(scenes[i + 2] || 2000);
-  const r = await page.evaluate(code);
+  // "TAP:<css selector>" taps an element with a real touch event.
+  const r = code.startsWith('TAP:') ? (await page.tap(code.slice(4)), 'tapped') : await page.evaluate(code);
   if (r !== undefined) console.log(name, JSON.stringify(r));
   await page.waitForTimeout(wait);
   await page.screenshot({ path: `${OUT}/dbg-${name}.png`, timeout: 120000 });

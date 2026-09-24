@@ -23,7 +23,7 @@ import { Input } from '../player/input.js';
 import { AudioSystem } from './audio.js';
 import { Effects } from '../render/effects.js';
 import { Weather } from '../render/weather.js';
-import { createGalaxyBackground, createStarfield, createStreaks, createTunnel } from '../render/sky.js';
+import { createGalaxyBackground, renderGalaxyCube, createStarfield, createStreaks, createTunnel } from '../render/sky.js';
 import { GEAR_HEIGHT, RAMP_EXIT, EXIT_FACING } from '../render/shipModel.js';
 import { Tools } from './tools.js';
 import { Director } from './director.js';
@@ -38,6 +38,7 @@ import { loadTerrainTextures, terrainTime, setAnisotropy } from '../render/textu
 import { AsteroidFields } from '../render/asteroids.js';
 import { SpaceMeteors } from '../render/meteors.js';
 import { POISystem } from './poiSystem.js';
+import { SleepSequence } from './sleep.js';
 import { Weapons } from './weapons.js';
 
 const tv = new THREE.Vector3();
@@ -58,7 +59,9 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
-    this.background = createGalaxyBackground(7, this.mobile ? 512 : 1024);
+    // GPU-rendered cube backdrop; the CPU texture is the fallback.
+    try { this.background = renderGalaxyCube(this.renderer, this.mobile ? 768 : 1536, 7); } catch (err) { log.warn('galaxy cube failed', err); this.background = null; }
+    if (!this.background) this.background = createGalaxyBackground(7, this.mobile ? 512 : 1024);
     this.scene.background = this.background;
     this.scene.backgroundIntensity = 1;
     this.scene.fog = new THREE.FogExp2(0x000000, 0);
@@ -564,6 +567,7 @@ export class Game {
       case 'foot':
       case 'interior':
         this.player.update(dt, input);
+        if (this.sleep) this.sleep.update(dt);
         break;
       case 'vehicle':
         this.skimmer.update(dt, input, true);
@@ -578,7 +582,7 @@ export class Game {
     guard('asteroids', () => this.asteroids.update(dt, this.ship.worldPosition(new THREE.Vector3())));
     guard('weapons', () => this.weapons.update(dt, input));
     this.tools.update(dt, input);
-    this.interaction = guard('interact', () => findInteraction(this)) || null;
+    this.interaction = this.sleep ? null : guard('interact', () => findInteraction(this)) || null;
     if (this.settings.touchControls) this.touch.setInteraction(this.interaction);
     if (this.interaction && input.pressed('interact')) {
       this.interaction.action();
@@ -679,8 +683,14 @@ export class Game {
   }
 
   // ---------------- camera ----------------
+  // Lie down in the bunk; `skip` advances time while the screen is dark.
+  sleepInBunk(skip, wakeKey) {
+    if (this.sleep || this.mode !== 'interior' || !this.ship.model.bunk) { skip(); return; }
+    this.sleep = new SleepSequence(this, skip, wakeKey);
+  }
+
   updateCamera(dt) {
-    if (!this.player || this.photo.active) return;
+    if (!this.player || this.photo.active || this.sleep) return;
     const cam = this.camera;
     const base = this.cameraBase || { pos: new THREE.Vector3(), rotX: 0 };
     let shake = 0, fov = this.settings.fov;
@@ -820,7 +830,8 @@ export class Game {
       sm.shell.visible = !inCabin;
       sm.interior.visible = inCabin;
       // From inside, the old close-fitting hull seals the cabin and canopy.
-      for (const o of sm.legacyHull) o.visible = inCabin;
+      // The old hull's nose would hide the dashboard from the pilot's seat.
+      for (const o of sm.legacyHull) o.visible = inCabin && !(this.mode === 'pilot' && o === sm.legacyHull[0]);
     }
     const cabin = this.mode === 'interior' || this.mode === 'pilot' || this.mode === 'docked';
     if (this.ship) for (const l of this.ship.model.lamps) l.intensity = cabin ? (this.mode === 'pilot' ? 2 : 9) : 0;

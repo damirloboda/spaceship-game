@@ -2,48 +2,16 @@
 // discovers them as the player (or low-flying ship) arrives, hands out loot
 // and logs, and provides HUD markers and "E" interactions.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RNG } from '../core/rng.js';
 import { t } from '../i18n/index.js';
 import { POI_BUILDERS, poiContext } from '../render/poiModels.js';
+import { mergeStatic } from '../render/mergeStatic.js';
 
 const BUILD_RANGE = 5000;
 const DROP_RANGE = 8000;
 const COLORS = { ruins: '#7fe8ff', crash: '#ff8a5d', outpost: '#39d0ff', camp: '#ffc070', monolith: '#c78bff', fossil: '#e8dcc0', crystals: '#9fe8ff' };
 const ICONS = { ruins: '⌂', crash: '✦', outpost: '⌂', camp: '▲', monolith: '▮', fossil: '☗', crystals: '◆' };
 const tv = new THREE.Vector3();
-
-// Merge every static mesh of a site by material: a few draw calls per site.
-function mergeStatic(group) {
-  group.updateMatrixWorld(true);
-  const inv = group.matrixWorld.clone().invert();
-  const byMat = new Map();
-  const drop = [];
-  group.traverse((o) => {
-    if (!o.isMesh || o.userData.keep || o.isPoints) return;
-    let hasKeptParent = false;
-    for (let p = o.parent; p && p !== group; p = p.parent) if (p.userData.keep) hasKeptParent = true;
-    if (hasKeptParent) return;
-    const geo = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone());
-    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
-    if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
-    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
-    const list = byMat.get(o.material) || [];
-    list.push({ geo, cast: o.castShadow });
-    byMat.set(o.material, list);
-    drop.push(o);
-  });
-  for (const o of drop) o.removeFromParent();
-  for (const [mat, list] of byMat) {
-    const merged = mergeGeometries(list.map((l) => l.geo), false);
-    for (const l of list) l.geo.dispose();
-    if (!merged) continue;
-    const m = new THREE.Mesh(merged, mat);
-    m.castShadow = list.some((l) => l.cast) && !mat.transparent;
-    m.receiveShadow = true;
-    group.add(m);
-  }
-}
 
 export class POISystem {
   constructor(game) {

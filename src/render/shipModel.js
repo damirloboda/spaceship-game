@@ -7,6 +7,7 @@ import { colorize, merge } from './models.js';
 import { createFieldMaterial, createExhaustMaterial } from './shaders.js';
 import { texture, applyHullDetail } from './textures.js';
 import { staticInstance, SHIP_MODEL } from './modelLib.js';
+import { bed, fridge, galley, diningTable, workbench, labBench, pilotSeat, crate } from './interiorProps.js';
 
 export const INTERIOR = { minX: -3.2, maxX: 3.2, minZ: -10.8, maxZ: 10.8, height: 2.8 };
 export const GEAR_HEIGHT = 2.6; // distance from deck (y=0) to the ground when landed
@@ -405,7 +406,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
 
   // ---------- Interior ----------
   const I = INTERIOR;
-  const wallC = [0.66, 0.7, 0.75], floorC = [0.26, 0.28, 0.32], trimC = [0.95, 0.5, 0.15], darkC = [0.2, 0.22, 0.25];
+  const wallC = [0.5, 0.55, 0.62], floorC = [0.24, 0.26, 0.3], trimC = [0.95, 0.5, 0.15], darkC = [0.2, 0.22, 0.25];
   const parts = [];
   const colliders = [];
   const solid = (w, h, d, x, y, z, c, collide = true) => {
@@ -430,27 +431,41 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
     solid(1.6, 0.5, 0.15, 0, I.height - 0.25, z, wallC, false);
     parts.push(box(1.7, 0.08, 0.2, 0, I.height - 0.5, z, trimC));
   }
-  // Cockpit: seat and consoles
-  solid(0.9, 0.5, 0.9, 0, 0.25, -9.1, darkC);
-  solid(0.9, 1.1, 0.2, 0, 0.95, -8.6, darkC, false);
+  // Collision only: the furniture itself is modelled in interiorProps.js.
+  const block = (w, h, d, x, y, z) => colliders.push({ min: [x - w / 2, y - h / 2, z - d / 2], max: [x + w / 2, y + h / 2, z + d / 2] });
+  const props = new THREE.Group();
+  props.name = 'cabin-props';
+  const place = (obj, x, z, ry = 0) => { obj.position.set(x, 0, z); obj.rotation.y = ry; props.add(obj); return obj; };
+  // Cockpit: pilot seat and side consoles
+  block(0.9, 0.5, 0.9, 0, 0.25, -9.1);
+  place(pilotSeat(), 0, -9.1);
   solid(1.2, 0.8, 0.9, -2.3, 0.4, -9.8, darkC);
   solid(1.2, 0.8, 0.9, 2.3, 0.4, -9.8, darkC);
-  // Quarters (left): bed and locker
-  solid(1.8, 0.5, 2.6, -2.2, 0.25, -4.4, [0.35, 0.4, 0.55]);
-  parts.push(box(1.7, 0.15, 2.5, -2.2, 0.55, -4.4, [0.85, 0.85, 0.9]));
-  solid(0.8, 2.0, 0.8, -2.7, 1.0, -1.6, [0.55, 0.58, 0.62]);
-  // Lab (right): bench and analyser
-  solid(1.2, 0.9, 3.0, 2.5, 0.45, -4.2, [0.85, 0.88, 0.9]);
-  // Galley (left, aft of quarters)
-  solid(1.0, 0.95, 2.2, -2.6, 0.475, 0.4, [0.6, 0.5, 0.42]);
+  // Quarters (port): bunk and the galley fridge
+  block(1.8, 0.62, 2.6, -2.2, 0.31, -4.4);
+  const bunk = place(bed(), -2.2, -4.4);
+  block(0.8, 2.0, 0.8, -2.7, 1.0, -1.6);
+  place(fridge(), -2.75, -1.6);
+  // Lab (starboard)
+  block(1.2, 0.9, 3.0, 2.5, 0.45, -4.2);
+  place(labBench(3.0), 2.6, -4.2);
+  // Galley (port, aft of quarters) and a table opposite
+  block(1.0, 0.95, 2.2, -2.6, 0.475, 0.4);
+  place(galley(2.2), -2.66, 0.4);
+  block(0.95, 0.78, 0.95, 2.35, 0.39, 0.0);
+  place(diningTable(), 2.35, 0.0);
   // Technical bay: engine block in the centre-aft
   solid(2.2, 2.0, 1.8, 0, 1.0, 6.4, [0.3, 0.32, 0.36]);
   parts.push(box(2.25, 0.2, 1.85, 0, 1.4, 6.4, trimC));
-  // Workbench right side
-  solid(1.0, 0.9, 2.0, 2.65, 0.45, 5.4, [0.5, 0.45, 0.38]);
+  // Workbench (starboard)
+  block(1.0, 0.9, 2.0, 2.65, 0.45, 5.4);
+  place(workbench(2.0), 2.68, 5.4);
   // Cargo crates
-  solid(1.1, 1.1, 1.1, -2.5, 0.55, 9.5, [0.55, 0.45, 0.25]);
-  solid(1.1, 0.9, 1.1, 2.5, 0.45, 9.6, [0.35, 0.45, 0.3]);
+  block(1.1, 1.1, 1.1, -2.5, 0.55, 9.5);
+  place(crate(1.1, 0x6a7a4a, 'SUPPLIES'), -2.5, 9.5, 0.1);
+  block(1.1, 0.9, 1.1, 2.5, 0.45, 9.6);
+  place(crate(0.9, 0x8a5a3a, 'PARTS'), 2.5, 9.6, -0.15);
+  place(crate(0.6, 0x3f5a6e, 'SAMPLES'), -2.5, 9.45, 0.4).position.y = 1.1;
   // Structural ribs, an accent band and kick plates, ceiling pipes and
   // handrails: the cabin reads as a working ship, not a plain box.
   const ribC = [0.4, 0.43, 0.48], pipeC = [0.56, 0.59, 0.63];
@@ -484,10 +499,10 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   lights.push(box(2.0, 0.05, 0.3, 0, I.height - 0.02, 1, [1, 1, 1]));
   lights.push(box(2.0, 0.05, 0.3, 0, I.height - 0.02, 5, [1, 1, 1]));
   const intMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.3 });
-  applyHullDetail(intMat, { tile: 2.4, strength: 0.75 });
+  applyHullDetail(intMat, { tile: 3.4, strength: 0.6 });
   const intMesh = new THREE.Mesh(merge(parts), intMat);
   intMesh.receiveShadow = true;
-  interior.add(intMesh);
+  interior.add(intMesh, props);
   const stripMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0, emissive: new THREE.Color(0.6, 0.85, 1.0), emissiveIntensity: 1.5 });
   interior.add(new THREE.Mesh(merge(lights), stripMat));
   // Cockpit window (inside view)
@@ -515,7 +530,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
     interior.add(frame);
   }
   // Engine core glow
-  const coreMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.7, 1.0).multiplyScalar(2), toneMapped: false });
+  const coreMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.6, 1.0).multiplyScalar(1.15), toneMapped: false });
   const core = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.6, 12), coreMat);
   core.rotation.z = Math.PI / 2;
   core.position.set(0, 1.0, 5.45);
@@ -550,7 +565,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
   const repair = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 1.0), new THREE.MeshStandardMaterial({ color: 0x2a2e34, metalness: 0.6, roughness: 0.4 }));
   repair.position.set(I.maxX - 0.1, 1.3, 3.2);
   interior.add(repair);
-  const rscreen = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 1.0, 0.4), toneMapped: false }));
+  const rscreen = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: screenTexture('bars', '#7dff9a'), toneMapped: false }));
   rscreen.rotation.y = -Math.PI / 2;
   rscreen.position.set(I.maxX - 0.21, 1.35, 3.2);
   interior.add(rscreen);
@@ -591,6 +606,7 @@ export function buildShip(colorRGB = [0.88, 0.9, 0.92]) {
     root, exterior, interior, shell, legacyHull: shell ? legacyHull : [], flames, navLights: [navR, navG], strobe, engineLight, gear, ramp, field, fieldMat, canopy, colliders, interactables, lamps: [lamp, lamp2], stick: stickMesh,
     nitro: { panel, doorPivot, canister, open: false, openT: 0 },
     cockpitEye: new THREE.Vector3(0, 1.62, -9.1),
+    bunk,
     materials: [hullMat, canopyMat, glowMat, flameMat, gearMat, intMat, stripMat, windowMat, screenMat, coreMat],
   };
 }

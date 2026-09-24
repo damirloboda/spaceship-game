@@ -215,6 +215,8 @@ export class Player {
 
   // ---- simulation ----
   update(dt, input) {
+    // Asleep in the bunk: the sleep sequence drives the pose.
+    if (this.game.sleep) { this.animate(dt); return; }
     const look = input.lookDelta(dt);
     this.pitch = THREE.MathUtils.clamp(this.pitch - look.y, -1.45, 1.45);
     this.forward.applyAxisAngle(this.up, -look.x);
@@ -400,7 +402,7 @@ export class Player {
   }
 
   animate(dt) {
-    const tp = this.game.cameraMode === 'third' || this.game.photo?.active;
+    const tp = this.game.cameraMode === 'third' || this.game.photo?.active || !!this.game.sleep;
     const jet = this.game.state.jetpack;
     this.jetpackMesh.visible = jet.owned;
     for (const f of this.flames) {
@@ -421,7 +423,8 @@ export class Player {
       if (this.landT > 0) { this.landT -= dt; if (state === 'idle' || state === 'walk') state = 'land'; }
       // Idle for a while: a friendly wave.
       this.idleT = state === 'idle' ? (this.idleT || 0) + dt : 0;
-      if (this.idleT > 12) state = 'wave';
+      if (this.idleT > 12 && !this.game.sleep) state = 'wave';
+      if (this.game.sleep) rate = 0.35;
       if (this.idleT > 14.5) this.idleT = 0;
       a.play(state, 0.2, rate);
       a.update(dt);
@@ -429,7 +432,7 @@ export class Player {
       const flying = !this.grounded && !this.swimming;
       const lean = flying ? THREE.MathUtils.clamp(this.speed / 9, 0, 1) * 0.4 : 0;
       this.leanAmt = (this.leanAmt || 0) + (lean - (this.leanAmt || 0)) * Math.min(1, dt * 4);
-      this.model.rotation.x = -this.leanAmt;
+      if (!this.game.sleep) this.model.rotation.x = -this.leanAmt;
       // The model stays in the scene in first person so the jetpack's
       // flame, light and particles remain; only the body is hidden.
       this.model.visible = true;

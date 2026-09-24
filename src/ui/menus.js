@@ -247,7 +247,7 @@ export class Menus {
         const s = inv.items[i];
         if (!s) return h('div', { class: 'slot empty' });
         const d = itemDef(s.id);
-        return h('button', { class: `slot ${sel && sel.where === where && sel.index === i ? 'on' : ''}`, style: { '--c': d.color }, onclick: () => { data.sel = { where, index: i, id: s.id }; this.refresh(); }, title: t(`item.${s.id}`) }, h('b', {}, d.glyph), h('em', {}, s.n));
+        return h('button', { class: `slot ${sel && sel.where === where && sel.index === i ? 'on' : ''}`, style: { '--c': d.color }, onclick: () => { data.sel = { where, index: i, id: s.id }; this.refresh(); }, title: t(`item.${s.id}`) }, h('b', {}, d.glyph), h('i', { class: 'slot-name' }, t(`item.${s.id}`)), h('em', {}, s.n));
       }));
     const actions = [];
     if (sel) {
@@ -748,8 +748,8 @@ export class Menus {
     const g = this.game;
     return this.panel('rest.title', [
       h('p', { class: 'muted' }, t('rest.desc')),
-      this.btn('rest.sleep', () => { this.skipToHour(7); this.closeAll(); }, { cls: 'primary' }),
-      this.btn('rest.nap', () => { const body = g.player.body || g.ship.body || g.homeBody(); this.skipTime(body.def.spinPeriod / 8); this.closeAll(); }),
+      this.btn('rest.sleep', () => { this.closeAll(); g.sleepInBunk(() => this.skipToHour(7), 'rest.woke_up'); }, { cls: 'primary' }),
+      this.btn('rest.nap', () => { const body = g.player.body || g.ship.body || g.homeBody(); this.closeAll(); g.sleepInBunk(() => this.skipTime(body.def.spinPeriod / 8), 'rest.woke_nap'); }),
       h('h3', {}, t('rest.cryo')),
       h('p', { class: 'muted' }, t('rest.cryo_desc')),
       this.btn('rest.cryo_sleep', () => { const body = g.ship.body || g.homeBody(); this.skipTime(body.def.spinPeriod * 5); g.director.news('news.cryo', { pilot: g.state.profile.name }); this.closeAll(); }),

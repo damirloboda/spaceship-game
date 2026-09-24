@@ -434,7 +434,9 @@ export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
         vec3 sss = uShallow * 0.9 * (vCrest * 0.9 + 0.04) * (0.25 + sunBack * 1.2) * uDay;
         // Foam: breaking crests and bands washing onto the shore.
         float n1 = wNoise(wUV * 0.35 + uTime * 0.07), n2 = wNoise(wUV * 1.3 - uTime * 0.11);
-        float crestFoam = smoothstep(0.6, 1.0, vCrest + (n1 - 0.5) * 0.5) * 0.55;
+        // Whitecaps only on the tallest crests, in patches (not every wave breaks).
+        float capPatch = smoothstep(0.55, 0.8, wNoise(wUV * 0.02 + uTime * 0.01));
+        float crestFoam = smoothstep(0.82, 1.05, vCrest + (n1 - 0.5) * 0.35) * capPatch * 0.45;
         float shore = 1.0 - smoothstep(0.0, 2.2, vDepth);
         float bands = smoothstep(0.55, 0.95, sin(vDepth * 5.0 - uTime * 1.4 + n1 * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.0, 1.6, vDepth));
         float edge = 1.0 - smoothstep(0.0, 0.35, vDepth);
@@ -442,7 +444,7 @@ export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
         vec2 flow = vec2(0.8, 0.6);
         vec2 sUV = vec2(dot(wUV, flow), dot(wUV, vec2(-flow.y, flow.x)));
         float drift = wNoise(vec2(sUV.x * 0.012 - uTime * 0.05, sUV.y * 0.06)) * wNoise(vec2(sUV.x * 0.03 - uTime * 0.09, sUV.y * 0.15 + 3.0));
-        float streak = smoothstep(0.42, 0.7, drift) * smoothstep(1.5, 6.0, depth) * (1.0 - smoothstep(250.0, 700.0, wDist)) * 0.4;
+        float streak = smoothstep(0.55, 0.8, drift) * smoothstep(1.5, 6.0, depth) * (1.0 - smoothstep(200.0, 600.0, wDist)) * 0.2;
         float foam = clamp(max(max(crestFoam, streak * (0.4 + n2)), (bands * 0.9 + edge) * shore) * (0.55 + n2 * 0.6), 0.0, 1.0);
         // Water's own albedo is dark: its colour comes from absorption, the
         // sea floor showing through and reflections.
@@ -477,17 +479,27 @@ export function createWaterMaterial(color = [0.02, 0.14, 0.26]) {
           vec3 R = reflect(-V, wNL);
           float ru = max(dot(R, wUp), 0.0);
           vec3 skyR = mix(uSkyH * 0.8, uSkyZ, pow(ru, 0.35));
+          // Clouds in the reflection: project the reflected ray onto the
+          // cloud deck and drift it with the wind.
+          {
+            float inv = 1.0 / max(ru, 0.06);
+            vec2 cp = vec2(dot(R, wT), dot(R, wB)) * inv * 0.9 + wUV * 0.00035 + vec2(uTime * 0.004, uTime * 0.0025);
+            float cn = wNoise(cp * 2.0) * 0.55 + wNoise(cp * 4.3 + 7.1) * 0.3 + wNoise(cp * 9.7 + 3.3) * 0.15;
+            float cloud = smoothstep(0.5, 0.78, cn) * smoothstep(0.02, 0.22, ru);
+            vec3 cloudCol = mix(uSkyH * 0.9, vec3(1.0) * (0.25 + uDay * 0.95), 0.75) + uSunC * 0.06 * uDay;
+            skyR = mix(skyR, cloudCol, cloud * 0.85);
+          }
           // Microfacet shadowing keeps rough water from mirroring at grazing angles.
           float F = 0.02 + 0.68 * pow(1.0 - max(dot(V, wNL), 0.0), 5.0);
           float sd = max(dot(R, uSunL), 0.0);
           // Sharp glitter up close; a soft sun path in the distance (the sharp
           // lobe aliases into blocky sparkles through bloom far away).
           float gNear = 1.0 - smoothstep(150.0, 1200.0, wDist);
-          float glint = pow(sd, 1200.0) * 90.0 * gNear + pow(sd, 90.0) * mix(0.8, 2.0, gNear) + pow(sd, 12.0) * 0.12;
+          float glint = min(pow(sd, 1200.0) * 40.0 * gNear, 12.0) + pow(sd, 90.0) * mix(0.8, 2.0, gNear) + pow(sd, 12.0) * 0.12;
           totalEmissiveRadiance += (skyR * F + uSunC * glint * (0.25 + F)) * (1.0 - foam) * (1.0 - smoothstep(-0.2, 0.3, -vDepth));
         }`);
   };
-  mat.customProgramCacheKey = () => 'ocean-waves-v2';
+  mat.customProgramCacheKey = () => 'ocean-waves-v3';
   return mat;
 }
 

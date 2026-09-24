@@ -17,12 +17,23 @@ export class TouchControls {
     this.root = h('div', { id: 'touch', class: 'hidden' });
     this.stick = h('div', { class: 'stick' }, h('i'));
     this.buttons = h('div', { class: 'tbuttons' });
+    // Top bar buttons fire on touchend themselves: the stick/look layer
+    // cancels default touch behaviour, which would swallow their clicks.
+    const tap = (label, fn) => {
+      const b = h('button', {}, label);
+      let touched = false;
+      b.addEventListener('touchstart', (e) => { e.stopPropagation(); touched = true; b.classList.add('on'); }, { passive: true });
+      b.addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.remove('on'); if (touched) { touched = false; this.game.audio.play('ui'); this.buzz(8); fn(); } });
+      b.addEventListener('touchcancel', () => { touched = false; b.classList.remove('on'); });
+      b.addEventListener('click', () => fn());
+      return b;
+    };
     this.top = h('div', { class: 'ttop' },
-      h('button', { onclick: () => game.menus.open('pause') }, '☰'),
-      h('button', { onclick: () => game.menus.open('map') }, t('touch.map')),
-      h('button', { onclick: () => game.menus.open('inventory') }, t('touch.bag')),
-      h('button', { onclick: () => game.toggleView() }, t('touch.view')),
-      h('button', { onclick: () => game.photo.toggle(true) }, '📷'));
+      tap('☰', () => game.menus.open('pause')),
+      tap(t('touch.map'), () => game.menus.open('map')),
+      tap(t('touch.bag'), () => game.menus.open('inventory')),
+      tap(t('touch.view'), () => game.toggleView()),
+      tap('📷', () => game.photo.toggle(true)));
     this.root.append(this.stick, this.buttons, this.top);
     root.append(this.root);
     this.moveId = null;
@@ -38,8 +49,10 @@ export class TouchControls {
     const inp = this.game.input;
     el.addEventListener('touchstart', (e) => {
       this.game.audio.unlock();
+      let onButton = true;
       for (const tch of e.changedTouches) {
         if (tch.target.closest('button')) continue;
+        onButton = false;
         if (tch.clientX < window.innerWidth * 0.45 && this.moveId === null) {
           this.moveId = tch.identifier;
           this.origin = { x: tch.clientX, y: tch.clientY };
@@ -51,7 +64,7 @@ export class TouchControls {
           this.last = { x: tch.clientX, y: tch.clientY };
         }
       }
-      e.preventDefault();
+      if (!onButton) e.preventDefault();
     }, { passive: false });
     el.addEventListener('touchmove', (e) => {
       for (const tch of e.changedTouches) {

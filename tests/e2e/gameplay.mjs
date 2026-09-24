@@ -143,6 +143,17 @@ try {
   check('Nitro installed via tech bay', nitro.installed && nitro.charge === 100, JSON.stringify(nitro));
   await page.screenshot({ path: `${OUT}/gp-techbay.png` });
   await page.keyboard.press('Escape');
+  // 6b. Sleep in the bunk: lie down, time skips to the morning, stand up.
+  const slept = await ev(() => {
+    const g = window.__game, p = g.player;
+    p.pos.set(-0.8, 0, -3.6);
+    g.sleepInBunk(() => g.menus.skipToHour(7), 'rest.woke_up');
+    const started = !!g.sleep;
+    let lay = 0;
+    for (let i = 0; i < 30 * 9 && g.sleep; i++) { g.simulate(1 / 30, 1 / 30); lay = Math.max(lay, p.model.rotation.x); }
+    return { started, lay: +lay.toFixed(2), done: !g.sleep, hour: +(g.localHour || 0).toFixed(1), mode: g.mode, stand: p.model.rotation.x };
+  });
+  check('sleep in the bunk until morning', slept.started && slept.lay > 1.3 && slept.done && slept.hour >= 6.5 && slept.hour < 9 && slept.mode === 'interior' && slept.stand === 0, JSON.stringify(slept));
   // 7. Walk to the cockpit, sit, take off
   await ev(() => { const g = window.__game; g.player.pos.set(0, 0, -6); g.player.forward.set(0, 0, -1); });
   await hold('KeyW', 1500);

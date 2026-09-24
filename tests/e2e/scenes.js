@@ -186,3 +186,31 @@ window.__scenes.poi = (kind, dist = 38, lift = 0) => {
   g.simulate(1.5, 1 / 30);
   return { kind: poi.kind, id: poi.id, built: !!poi.obj, far: Math.round(g.pois.place(b, poi).distanceTo(p.pos)), n: b.pois.length, kinds: [...new Set(b.pois.map((x) => x.kind))] };
 };
+// Inside the ship: stand at (x, z) looking towards (lx, lz), first person.
+window.__scenes.cabin = (x, z, lx, lz, third = false) => {
+  const g = window.__game;
+  if (g.mode !== 'interior') g.enterShipFromOutside();
+  if ((g.cameraMode === 'third') !== third) g.toggleView();
+  g.hud.bannerQueue.length = 0;
+  const p = g.player;
+  p.pos.set(x, 0, z);
+  const f = new p.pos.constructor(lx - x, 0, lz - z).normalize();
+  p.forward.copy(f);
+  if (p.yaw !== undefined) p.yaw = Math.atan2(-f.x, -f.z);
+  g.simulate(0.4, 1 / 30);
+  return { mode: g.mode, cam: g.cameraMode };
+};
+// Walk up to the bunk and go to sleep; step with __scenes.sleepStep(secs).
+window.__scenes.sleep = () => {
+  const g = window.__game;
+  window.__scenes.cabin(-0.8, -3.6, -2.2, -4.4, true);
+  const h0 = g.localHour;
+  g.sleepInBunk(() => g.menus.skipToHour(7), 'rest.woke_up');
+  window.__h0 = h0;
+  return { sleeping: !!g.sleep, hour: h0 };
+};
+window.__scenes.sleepStep = (secs) => {
+  const g = window.__game;
+  for (let i = 0; i < Math.round(secs * 30); i++) g.frame ? g.simulate(1 / 30, 1 / 30) : 0;
+  return { sleeping: !!g.sleep, t: g.sleep ? +g.sleep.t.toFixed(2) : null, hour: +(g.localHour || 0).toFixed(1), rotX: +g.player.model.rotation.x.toFixed(2) };
+};

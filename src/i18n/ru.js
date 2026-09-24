@@ -83,6 +83,8 @@ export default {
   'hud.hull': 'Корпус',
   'hud.shield': 'Щит',
   'hud.alt': 'ВЫС',
+  "rest.woke_up": "Доброе утро, {name}. Вы отлично выспались.",
+  "rest.woke_nap": "Вы проснулись бодрым.",
   "poi.name.ruins": "Древние руины",
   "poi.name.crash": "Место крушения",
   "poi.name.outpost": "Заброшенный аванпост",

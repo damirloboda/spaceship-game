@@ -14,6 +14,17 @@ static web server.
 
 ## Play
 
+**Online (free, GitHub Pages):** <https://damirloboda.github.io/spaceship-game/>
+
+To switch the site on once: repository **Settings → Pages → Build and
+deployment → Source: Deploy from a branch → Branch:** `main` (or the working
+branch) **/ (root) → Save**. The site is live about a minute later and
+updates on every push to that branch. On a phone, open the link in Chrome or
+Safari and choose **Add to Home screen**: the game then starts full screen,
+like an app (`manifest.webmanifest`).
+
+**Locally:**
+
 ```bash
 npm start            # serves the folder on http://localhost:8080
 ```
@@ -75,7 +86,11 @@ Add `?dev=1` to the URL for developer tools (press <kbd>`</kbd>).
   with an opening engine-compartment panel, workbench, cargo hold), module
   damage and repair, fuel, power distribution, Nitro/Overdrive, Lightbreak
   (in-system cruise and interstellar jumps), autopilot, auto/emergency landing,
-  docking at the orbital station. Arriving from space is always survivable:
+  docking at the orbital station. The cabin is furnished in detail (bunk with
+  bedding and a reading light, fridge, galley with sink and food synthesiser,
+  dining table, workbench with a pegboard of tools, lab bench, pilot seat,
+  cargo crates) and you can sleep in the bunk: lie down, the cabin dims,
+  time passes, and you wake up in the morning. Arriving from space is always survivable:
   the air brakes the ship to atmospheric speed with a re-entry plasma sheath,
   the closing speed toward the ground is capped at a ~2 s glide, and flying
   fast at a mountain pulls the nose up automatically. Landing assist: below 180 m the ship levels

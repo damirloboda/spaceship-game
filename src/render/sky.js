@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { Noise3 } from '../core/noise.js';
 import { RNG } from '../core/rng.js';
-import { V_HEAD, V_TAIL, F_HEAD, F_DEPTH } from './shaders.js';
+import { V_HEAD, V_TAIL, F_HEAD, F_DEPTH, NOISE_GLSL } from './shaders.js';
 
 export function createGalaxyBackground(seed = 7, width = 1024) {
   const height = width / 2;
@@ -38,6 +38,76 @@ export function createGalaxyBackground(seed = 7, width = 1024) {
   tex.minFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
   return tex;
+}
+
+// High-resolution galaxy backdrop rendered once on the GPU into a cube
+// map: the Milky Way band with a bright core and dark dust lanes, coloured
+// emission nebulae, and thousands of faint background stars.
+export function renderGalaxyCube(renderer, size = 1024, seed = 7) {
+  const scene = new THREE.Scene();
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: { uSeed: { value: seed * 1.37 } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: NOISE_GLSL + /* glsl */`
+      uniform float uSeed; varying vec3 vDir;
+      float fbm(vec3 p, int oct){ float a = 0.5, s = 0.0; for (int i = 0; i < 6; i++){ if (i >= oct) break; s += snoise(p) * a; p *= 2.07; a *= 0.5; } return s; }
+      float ridged(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++){ s += (1.0 - abs(snoise(p))) * a; p *= 2.13; a *= 0.5; } return s; }
+      float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      // Point-like stars from a jittered 3D grid.
+      float stars(vec3 d, float scale, float density, float rad){
+        vec3 p = d * scale; vec3 c = floor(p); vec3 f = fract(p) - 0.5;
+        float h = hash(c + uSeed);
+        if (h < 1.0 - density) return 0.0;
+        vec3 o = vec3(hash(c + 1.3), hash(c + 2.7), hash(c + 4.1)) - 0.5;
+        float r = length(f - o * 0.7);
+        return smoothstep(rad, 0.0, r) * (0.3 + 0.7 * hash(c + 9.9));
+      }
+      void main(){
+        vec3 d = normalize(vDir);
+        vec3 sp = d * 2.0 + uSeed;
+        // Galactic plane tilted against the system; the core sits in it.
+        vec3 nrm = normalize(vec3(-0.43, 0.9, 0.0));
+        vec3 core = normalize(vec3(0.9, 0.43, 0.25));
+        float gy = dot(d, nrm);
+        float warp = fbm(sp * 1.5, 4) * 0.08;
+        float band = exp(-pow(gy + warp, 2.0) * 38.0);
+        float wide = exp(-pow(gy + warp, 2.0) * 8.0);
+        float toCore = acos(clamp(dot(d, core), -1.0, 1.0));
+        float bulge = exp(-toCore * toCore * 2.2) * exp(-gy * gy * 14.0);
+        float clouds = fbm(sp * 3.0, 6) * 0.5 + 0.5;
+        // Dust: a dark rift along the middle of the band plus soft patches.
+        float riftW = 0.035 + fbm(sp * 2.0 + 4.0, 3) * 0.02;
+        float rift = exp(-pow((gy + warp * 0.6 + fbm(sp * 3.5, 3) * 0.02) / riftW, 2.0));
+        float patches = smoothstep(0.05, 0.45, fbm(sp * 2.6 + 7.0, 5));
+        float lanes = clamp(rift * (0.55 + patches * 0.45) + patches * band * 0.35, 0.0, 1.0);
+        float light = (band * (0.3 + clouds * 0.8) + wide * 0.1 + bulge * 0.8) * (1.0 - lanes * 0.8);
+        vec3 coreCol = vec3(1.0, 0.82, 0.62), armCol = vec3(0.62, 0.72, 1.0);
+        vec3 col = mix(armCol, coreCol, clamp(bulge * 1.6 + clouds * 0.25, 0.0, 1.0)) * light * 0.2;
+        // Emission nebulae: pink hydrogen and teal oxygen clouds near the band.
+        float nb1 = smoothstep(0.35, 0.8, fbm(sp * 1.2 + 11.0, 5) * 0.5 + 0.5) * wide;
+        float nb2 = smoothstep(0.45, 0.85, fbm(sp * 1.7 - 5.0, 5) * 0.5 + 0.5) * wide;
+        float wisps = fbm(sp * 6.0 + 3.0, 4) * 0.5 + 0.5;
+        col += vec3(0.9, 0.25, 0.45) * nb1 * wisps * 0.16 + vec3(0.15, 0.6, 0.7) * nb2 * wisps * 0.1;
+        // Unresolved star clouds sparkle along the band.
+        float grain = pow(clamp(snoise(d * 180.0 + uSeed) * 0.5 + 0.5, 0.0, 1.0), 6.0) * band;
+        col += vec3(1.0, 0.95, 0.9) * grain * 0.18 * (1.0 - lanes);
+        // Faint background stars, denser in the band.
+        float st = stars(d, 300.0, 0.06 + band * 0.18, 0.22) + stars(d, 150.0, 0.035, 0.15) * 1.5;
+        vec3 tint = mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), hash(floor(d * 300.0)));
+        col += tint * st * 0.9;
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  });
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 64, 32), mat));
+  const rt = new THREE.WebGLCubeRenderTarget(size, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+  rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const cam = new THREE.CubeCamera(0.1, 100, rt);
+  cam.update(renderer, scene);
+  scene.children[0].geometry.dispose();
+  mat.dispose();
+  return rt.texture;
 }
 
 export function createStarfield(count = 7000, seed = 3) {
