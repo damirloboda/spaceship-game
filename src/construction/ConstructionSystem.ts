@@ -45,6 +45,8 @@ export interface Blueprint {
   rx: number;
   ry: number;
   label: string;
+  /** сколько проверок подряд на чертеже не было ни одной доступной задачи */
+  stale?: number;
 }
 
 /**
@@ -147,7 +149,7 @@ export class ConstructionSystem {
    * Взять ближайшую доступную задачу. Выборка случайных кандидатов вместо полного
    * перебора — O(1) на запрос при любом числе задач.
    */
-  claim(colony: number, antId: number, x: number, y: number, kinds: number, time: number, near?: [number, number]): Job | null {
+  claim(colony: number, antId: number, x: number, y: number, kinds: number, time: number, near?: [number, number], reachable?: (standCell: number) => boolean): Job | null {
     const list = this.openList(colony);
     if (list.length === 0) return null;
     let best: Job | null = null;
@@ -163,7 +165,11 @@ export class ConstructionSystem {
       if (!j || j.done) { list[k] = list[list.length - 1]; list.pop(); if (list.length <= 48) s--; continue; }
       if (j.claimed >= 0) continue;
       if (!((1 << j.kind) & kinds)) continue;
-      if (!this.workable(j)) continue;
+      const stand = this.standCell(j);
+      if (stand < 0) continue;
+      if (j.kind === JK.DIG && !IS_DIGGABLE[this.t.mat[j.y * this.t.W + j.x]]) continue;
+      // клетка-опора должна быть достижима из гнезда (иначе муравей будет ходить вечно)
+      if (reachable && !reachable(stand)) continue;
       if (j.kind === JK.BUILD && !this.attachable(j)) continue;
       const bp = this.blueprints.get(j.bp);
       const pr = bp ? (bp.player ? 0.6 : 1) / Math.max(0.2, bp.priority) : 1;
@@ -260,6 +266,19 @@ export class ConstructionSystem {
   jobAtCell(x: number, y: number): Job | undefined {
     const id = this.jobAt.get(y * this.t.W + x);
     return id ? this.jobs.get(id) : undefined;
+  }
+
+  /** Есть ли у чертежа хоть одна доступная (и достижимая) задача. */
+  hasReachableJob(bpId: number, reachable: (standCell: number) => boolean): boolean {
+    const bp = this.blueprints.get(bpId);
+    if (!bp) return false;
+    for (const jid of bp.jobs) {
+      const j = this.jobs.get(jid);
+      if (!j || j.done) continue;
+      const s = this.standCell(j);
+      if (s >= 0 && reachable(s)) return true;
+    }
+    return false;
   }
 
   openCount(colony: number): number {

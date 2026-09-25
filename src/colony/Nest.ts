@@ -146,26 +146,26 @@ export class Nest {
       let soft = 0;
       let wet = 0;
       let total = 0;
-      for (let dy = -Math.ceil(ry) - 2; dy <= Math.ceil(ry) + 2 && ok; dy++) {
-        for (let dx = -Math.ceil(rx) - 2; dx <= Math.ceil(rx) + 2; dx++) {
+      // вокруг комнаты должен остаться целик грунта (≥3 клетки) — иначе подкоп соседних сводов
+      const gap = 3.5;
+      for (let dy = -Math.ceil(ry + gap); dy <= Math.ceil(ry + gap) && ok; dy++) {
+        for (let dx = -Math.ceil(rx + gap); dx <= Math.ceil(rx + gap); dx++) {
           const x = cx + dx;
           const y = cy + dy;
+          if (x < 0 || y < 0 || x >= W || y >= t.H) { ok = false; break; }
           const i = y * W + x;
           const m = t.mat[i];
           const inside = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1;
-          const near = (dx * dx) / ((rx + 2) ** 2) + (dy * dy) / ((ry + 2) ** 2) <= 1;
+          const near = (dx * dx) / ((rx + gap) ** 2) + (dy * dy) / ((ry + gap) ** 2) <= 1;
           if (!near) continue;
           if (t.water[i] > 0) { ok = false; break; }
+          if (t.flags[i] & F_NEST) { ok = false; break; }
           if (inside) {
-            if (t.flags[i] & F_NEST) { ok = false; break; }
             if (!IS_DIGGABLE[m] && m !== M.AIR) { ok = false; break; }
             if (m === M.AIR) { ok = false; break; } // пещеры и чужие ходы — не строим
             if (m === M.SAND || m === M.GRAVEL || m === M.LOOSE) soft++;
             wet += t.moist[i];
             total++;
-          } else if (t.flags[i] & F_NEST && !(dx === 0)) {
-            // не впритык к другой комнате
-            if (Math.abs(dy) <= ry) { ok = false; break; }
           }
         }
       }

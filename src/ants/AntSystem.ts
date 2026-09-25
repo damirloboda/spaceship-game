@@ -46,6 +46,25 @@ export class AntSystem {
     return id;
   }
 
+  /** Пересчитать счётчики агентов колоний (после загрузки). */
+  recount(): void {
+    const sim = this.sim;
+    const a = sim.ants;
+    for (const col of sim.colonies) { col.agents = 0; col.agentsByTask.fill(0); col.agentsByCaste.fill(0); }
+    for (let i = 0; i < a.n; i++) {
+      if (!a.alive[i] || a.state[i] === S.DYING) continue;
+      const col = sim.colonies[a.colony[i]];
+      col.agents++;
+      col.agentsByTask[a.task[i]]++;
+      col.agentsByCaste[a.caste[i]]++;
+    }
+    for (const col of sim.colonies) {
+      let st = 0;
+      for (const r of sim.routes.routes.values()) if (r.colony === col.id) st += r.stream;
+      col.streamAnts = st;
+    }
+  }
+
   update(dt: number): void {
     const sim = this.sim;
     const a = sim.ants;

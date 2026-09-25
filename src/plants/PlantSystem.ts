@@ -234,7 +234,7 @@ export class PlantSystem {
 
   private die(p: Plant): void {
     p.dead = true;
-    this.sim.bus.emit({ type: 'notice', text: `Засохло растение: ${['трава', 'одуванчик', 'куст', 'дерево'][p.kind]}`, x: p.x, y: p.y, tone: 'info' });
+    if (p.kind === PK.TREE || p.kind === PK.BUSH) this.sim.bus.emit({ type: 'notice', text: `Засохло: ${['трава', 'одуванчик', 'куст', 'дерево'][p.kind]}`, x: p.x, y: p.y, tone: 'info' });
   }
 
   /** Падение: всё надземное удаляется, ствол ложится бревном по ветру, листва — ресурсом. */

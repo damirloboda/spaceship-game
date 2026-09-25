@@ -223,7 +223,7 @@ export class Simulation {
   private onEvent(e: import('../core/EventBus').GameEvent): void {
     switch (e.type) {
       case 'collapse':
-        for (const d of this.directors) d.onCollapse(e.x, e.y);
+        for (const d of this.directors) d.onCollapse(e.x, e.y, e.size);
         this.particles?.dust(e.x, e.y, Math.min(60, e.size * 6));
         break;
       case 'structureComplete': {
@@ -363,6 +363,7 @@ export class Simulation {
     this.creatures.update(dt);
     if (this.tick % 30 === 0) this.construction.expire(this.time, (id) => !!a.alive[id] && a.state[id] !== S.DYING);
     this.plants.update(dt);
+    this.ambientFood(dt);
 
     const t3 = performance.now();
     const pb = this.settings.physicsBudget;
@@ -392,6 +393,36 @@ export class Simulation {
     this.perf.pher += (t5 - t4 - this.perf.pher) * k;
     this.perf.total += (t6 - t0 - this.perf.total) * k;
     this.perf.other = this.perf.total - this.perf.ants - this.perf.physics - this.perf.pher;
+  }
+
+  private ambientT = 0;
+  /**
+   * Мир меняется сам: люди роняют крошки на кухне и в саду, насекомые умирают
+   * своей смертью, с деревьев падает. Еда появляется и исчезает (портится).
+   */
+  private ambientFood(dt: number): void {
+    this.ambientT += dt;
+    if (this.ambientT < 20) return;
+    this.ambientT = 0;
+    const t = this.terrain;
+    const r = this.rng;
+    const n = Math.round(2 * this.mode.foodMul) + (r.chance(0.5) ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const z = this.zones[r.int(this.zones.length)];
+      const x = Math.round(r.range(z.x0 + 15, z.x1 - 15));
+      if (x < 2 || x >= t.W - 2) continue;
+      const y = t.standY(x);
+      const kind = z.kind === 3 ? r.pick([0, 0, 6, 6, 11]) : r.pick([0, 0, 1, 1, 2]);
+      this.food.spawn(kind, x + 0.5, y + 0.2, kind === 11 ? r.range(10, 30) : kind === 2 ? r.range(5, 9) : r.range(0.6, 1.6));
+    }
+    if (r.chance(0.25)) {
+      const x = Math.round(r.range(20, t.W - 20));
+      this.food.spawn(8, x + 0.5, t.standY(x) - 1, r.range(8, 22));
+    }
+    // портится лежалое: в мире не накапливаются тысячи предметов
+    if (this.food.items.length > 1500) {
+      for (const it of this.food.items) if (!it.removed && it.carriers.length === 0 && it.age > 900 && it.mass < 2) { this.food.remove(it); }
+    }
   }
 
   private countNodes(colony: number): number {

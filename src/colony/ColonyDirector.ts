@@ -25,6 +25,8 @@ export class ColonyDirector {
   private fieldT = 0;
   private carryT = 99;
   private lastCrackNote = -1e9;
+  private lastCollapseNote = -1e9;
+  private collapseLoss = 0;
   private rivalT = 0;
   private stressedQueue: [number, number][] = [];
   private debrisQueue: [number, number][] = [];
@@ -46,17 +48,22 @@ export class ColonyDirector {
     if (nearNest) this.stressedQueue.push([x, y]);
   }
 
-  onCollapse(x: number, y: number): void {
+  onCollapse(x: number, y: number, size = 1): void {
     const col = this.col;
     const sim = this.sim;
     col.pher.splash(P.DANGER, x, y, 12, 8, sim.time);
     col.memory.addDanger(x, y, 2);
     if (Math.hypot(x - col.nest.entranceX, y - col.nest.entranceY) < 120) this.debrisQueue.push([Math.round(x), Math.round(y)]);
-    // выводок в заваленной комнате
+    // выводок в заваленной комнате: потери пропорциональны размеру обвала
     for (const r of col.nest.rooms) {
       if (x >= r.x0 - 2 && x <= r.x1 + 2 && y >= r.y0 - 3 && y <= r.y1 + 2) {
-        const lost = col.brood.lose(r.id, 0.15);
-        if (lost > 0 && col.isPlayer) sim.bus.emit({ type: 'notice', text: `Обвал в комнате «${ROOM_NAMES[r.type]}»: потеряно ${lost} личинок`, x, y, tone: 'bad' });
+        const lost = col.brood.lose(r.id, Math.min(0.5, 0.03 * size));
+        this.collapseLoss += lost;
+        if (col.isPlayer && sim.time - this.lastCollapseNote > 20 && this.collapseLoss > 0) {
+          this.lastCollapseNote = sim.time;
+          sim.bus.emit({ type: 'notice', text: `Обвал в комнате «${ROOM_NAMES[r.type]}»: погибло личинок — ${this.collapseLoss}. Колония эвакуирует и расчищает`, x, y, tone: 'bad' });
+          this.collapseLoss = 0;
+        }
       }
     }
   }
@@ -306,6 +313,17 @@ export class ColonyDirector {
     const cons = sim.construction;
     const lvl = col.evo.level;
     if (col.priorities[T.BUILD] === 0) return;
+    // 0. безнадёжные чертежи колонии (завалены, отрезаны) — со временем отменяются
+    const reach = (c: number) => col.nest.field.field[c] !== 65535;
+    for (const bp of [...cons.blueprints.values()]) {
+      if (bp.colony !== col.id || bp.player) continue;
+      if (cons.hasReachableJob(bp.id, reach)) { bp.stale = 0; continue; }
+      bp.stale = (bp.stale ?? 0) + 1;
+      if (bp.stale > 40) {
+        cons.cancelBlueprint(bp.id);
+        if (bp.id === this.pendingRoomBp) this.pendingRoomBp = -1;
+      }
+    }
     // 1. укрепление треснувших сводов
     if (this.stressedQueue.length > 0) {
       const cells: [number, number, number][] = [];

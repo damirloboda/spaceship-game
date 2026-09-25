@@ -256,6 +256,7 @@ export async function deserialize(raw: Uint8Array): Promise<Simulation> {
   // погода и случайность
   Object.assign(sim.weather, json.weather);
   json.rngs.forEach((s: number, i: number) => { if (sim.rngs[i]) sim.rngs[i].state = s; });
+  sim.antSystem.recount();
   sim.water.renderDirty.clear();
   for (let cy = 0; cy < t.H; cy += 32) for (let cx = 0; cx < t.W; cx += 32) t.waterDirty.markCell(cx, cy);
   return sim;

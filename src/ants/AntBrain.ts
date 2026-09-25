@@ -102,7 +102,7 @@ export class AntBrain {
         const s = this.pickStructure(cid, a.x[i], a.y[i]);
         if (s) { a.state[i] = S.STRUCT_JOIN; a.target[i] = s.id; a.tx[i] = -1; a.timer[i] = 120; return; }
         const kinds = a.cargo[i] === CG.SOIL ? (1 << JK.BUILD) | (1 << JK.REINFORCE) : (1 << JK.DIG) | (1 << JK.BUILD) | (1 << JK.REINFORCE);
-        const job = sim.construction.claim(cid, i, a.x[i], a.y[i], kinds, sim.time);
+        const job = sim.construction.claim(cid, i, a.x[i], a.y[i], kinds, sim.time, undefined, (c) => col.nest.field.field[c] !== 65535);
         if (job) { a.state[i] = S.GOTO_JOB; a.target[i] = job.id; a.timer[i] = 90; return; }
         a.state[i] = S.IDLE;
         a.timer[i] = 1.5;
@@ -723,7 +723,8 @@ export class AntBrain {
       return;
     }
     const bp = sim.construction.blueprints.get(job.bp);
-    if (bp && dist > 6) this.navTo(i, `bp${bp.id}`, bp.x, bp.y, () => sim.construction.frontierCells(bp.id), dt);
+    // поле потока ведёт до самой точки работы (в обход укреплённых стен), прямо — только вплотную
+    if (bp && dist > 2.5) this.navTo(i, `bp${bp.id}`, bp.x, bp.y, () => sim.construction.frontierCells(bp.id), dt);
     else this.sys.steer(i, dx, dy, 1, dt, 0.25);
     const col = sim.colonies[a.colony[i]];
     if (dist < 12 && (sim.tick + i) % 8 === 0) col.pher.deposit(P.BUILD, job.x, job.y, 1, sim.time);
@@ -805,7 +806,7 @@ export class AntBrain {
     }
     // 2) ближайшая стройка, которой нужен материал
     if (a.tx[i] !== -7 && (sim.tick + i) % 5 === 0) {
-      const job = sim.construction.claim(cid, i, a.x[i], a.y[i], (1 << JK.BUILD) | (1 << JK.REINFORCE), sim.time);
+      const job = sim.construction.claim(cid, i, a.x[i], a.y[i], (1 << JK.BUILD) | (1 << JK.REINFORCE), sim.time, undefined, (c) => col.nest.field.field[c] !== 65535);
       if (job && Math.hypot(job.x - a.x[i], job.y - a.y[i]) < 90) {
         a.target[i] = job.id;
         a.state[i] = S.GOTO_JOB;
@@ -1126,7 +1127,8 @@ export class AntBrain {
     const seg = r.segments.find((s) => k >= s.from - 1 && k <= s.to);
     if (seg && seg.kind !== 'walk') {
       if (seg.kind === 'tunnel' && seg.ref >= 0 && sim.construction.blueprints.has(seg.ref)) {
-        const job = sim.construction.claim(a.colony[i], i, a.x[i], a.y[i], 1 << JK.DIG, sim.time);
+        const col2 = sim.colonies[a.colony[i]];
+        const job = sim.construction.claim(a.colony[i], i, a.x[i], a.y[i], 1 << JK.DIG, sim.time, undefined, (c) => col2.nest.field.field[c] !== 65535);
         if (job) { a.state[i] = S.GOTO_JOB; a.target[i] = job.id; a.timer[i] = 60; a.task[i] = T.BUILD; return; }
       } else if (seg.kind !== 'tunnel') {
         const s = sim.structures.get(seg.ref);
