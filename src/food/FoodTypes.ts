@@ -14,6 +14,7 @@ export const FK = {
   LEFTOVER: 11,
   HUMAN: 12,
   TWIG: 13, // веточка — строительный ресурс
+  PETAL: 14, // лепесток сакуры — ресурс грибной фермы
 } as const;
 
 export interface FoodKindDef {
@@ -52,6 +53,7 @@ export const FOOD_KINDS: FoodKindDef[] = [
   { id: 11, name: 'остатки еды', nutrition: 1.0, baseR: 4, baseMass: 60, spoil: 1100, density: 0.9, scent: 45, resource: false, color: [176, 132, 90], shape: 3 },
   { id: 12, name: 'чипсы', nutrition: 1.4, baseR: 3.5, baseMass: 40, spoil: Infinity, density: 0.3, scent: 45, resource: false, color: [236, 196, 90], shape: 2 },
   { id: 13, name: 'веточка', nutrition: 0, baseR: 0.9, baseMass: 1.2, spoil: Infinity, density: 0.6, scent: 3, resource: true, color: [120, 86, 52], shape: 8 },
+  { id: 14, name: 'лепесток сакуры', nutrition: 0.2, baseR: 0.55, baseMass: 0.5, spoil: 900, density: 0.2, scent: 6, resource: true, color: [248, 186, 208], shape: 6 },
 ];
 
 export function foodRadius(kind: number, mass: number): number {

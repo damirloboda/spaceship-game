@@ -32,10 +32,11 @@ export const M = {
   GRAVEL: 25,
   TOPSOIL: 26, // гумус у поверхности
   FLOWER: 27, // лепестки
+  BLOSSOM: 28, // цветы сакуры
 } as const;
 
 export type MaterialId = number;
-export const MATERIAL_COUNT = 28;
+export const MATERIAL_COUNT = 29;
 
 export interface MaterialDef {
   id: number;
@@ -118,6 +119,7 @@ export const MATERIALS: MaterialDef[] = [
   def(M.GRAVEL, 'gravel', 'гравий', { hardness: 2.5, density: 2.0, span: 0, granular: true, porous: 0.6, yields: M.GRAVEL, color: [128, 124, 118] }),
   def(M.TOPSOIL, 'topsoil', 'гумус', { hardness: 1.2, density: 1.2, span: 3, porous: 0.7, yields: M.LOOSE, buildable: true, color: [74, 54, 36] }),
   def(M.FLOWER, 'flower', 'цветок', { hardness: 0.4, density: 0.1, span: 30, porous: 0.2, yields: M.LEAF, organic: true, color: [236, 196, 48] }),
+  def(M.BLOSSOM, 'blossom', 'цветы сакуры', { hardness: 0.3, density: 0.1, span: 30, porous: 0.2, yields: M.LEAF, organic: true, color: [246, 176, 200] }),
 ];
 
 // Быстрые таблицы для горячих циклов.
@@ -133,6 +135,7 @@ export const IS_FOLIAGE = new Uint8Array(MATERIAL_COUNT);
 IS_FOLIAGE[27] = 1; // FLOWER
 IS_FOLIAGE[7] = 1; // LEAF
 IS_FOLIAGE[8] = 1; // GRASS
+IS_FOLIAGE[28] = 1; // BLOSSOM
 for (const m of MATERIALS) {
   IS_SOLID[m.id] = m.solid ? 1 : 0;
   IS_GRANULAR[m.id] = m.granular ? 1 : 0;

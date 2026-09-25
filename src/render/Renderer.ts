@@ -13,6 +13,8 @@ import { Z } from '../world/Zones';
 import { Camera } from './Camera';
 import { FULLSCREEN_VS, fullscreenVAO, program, texture, uniforms } from './GL';
 import { Particles } from './Particles';
+import { PostFX } from './PostFX';
+import { PK } from '../plants/PlantShapes';
 import { IF, K, SpriteBatch } from './SpriteBatch';
 import { SKY_FS } from './shaders/sky';
 import { TERRAIN_FS } from './shaders/terrain';
@@ -53,6 +55,9 @@ export class Renderer {
   private foodPal: Float32Array;
   private crPal: Float32Array;
   overlay = 0;
+  /** 'normal' — быстро; 'ultra' — пост-обработка, светлячки, отражения, горы */
+  quality: 'normal' | 'ultra' = 'normal';
+  private post: PostFX | null = null;
   stats: RenderStats = { instances: 0, agentsDrawn: 0, streamDrawn: 0, implicitDrawn: 0, ms: 0 };
   selectedAnt = -1;
   private tmp = [0, 0, 0];
@@ -67,8 +72,8 @@ export class Renderer {
     this.cam = new Camera(t.W, t.H);
     this.skyProg = program(gl, FULLSCREEN_VS, SKY_FS);
     this.terProg = program(gl, FULLSCREEN_VS, TERRAIN_FS);
-    this.skyU = uniforms(gl, this.skyProg, ['u_cam', 'u_zoom', 'u_res', 'u_world', 'u_time', 'u_tod', 'u_light', 'u_cloud', 'u_rain', 'u_fog', 'u_wind', 'u_thunder', 'u_indoor', 'u_groundY']);
-    this.terU = uniforms(gl, this.terProg, ['u_mat', 'u_water', 'u_pher', 'u_fog', 'u_sky', 'u_cam', 'u_zoom', 'u_res', 'u_world', 'u_time', 'u_light', 'u_wind', 'u_overlay', 'u_fogOn', 'u_indoor', 'u_groundY', 'u_pal']);
+    this.skyU = uniforms(gl, this.skyProg, ['u_cam', 'u_zoom', 'u_res', 'u_world', 'u_time', 'u_tod', 'u_light', 'u_cloud', 'u_rain', 'u_fog', 'u_wind', 'u_thunder', 'u_indoor', 'u_groundY', 'u_ultra', 'u_theme']);
+    this.terU = uniforms(gl, this.terProg, ['u_mat', 'u_water', 'u_pher', 'u_fog', 'u_sky', 'u_cam', 'u_zoom', 'u_res', 'u_world', 'u_time', 'u_light', 'u_wind', 'u_overlay', 'u_fogOn', 'u_indoor', 'u_groundY', 'u_ultra', 'u_tod', 'u_pal']);
     this.fsVAO = fullscreenVAO(gl);
     this.matBuf = new Uint8Array(t.size * 4);
     this.waterBuf = new Uint8Array(t.size);
@@ -117,7 +122,7 @@ export class Renderer {
   }
 
   resize(): void {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.quality === 'ultra' ? 2 : 1.5);
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     this.canvas.width = Math.round(w * dpr);
@@ -213,6 +218,12 @@ export class Renderer {
     this.upload();
     const light = sim.clock.light();
     const time = sim.time;
+    const ultra = this.quality === 'ultra';
+    if (ultra) {
+      if (!this.post) this.post = new PostFX(gl, this.fsVAO);
+      this.post.resize(W, H);
+      this.post.begin();
+    }
     // небо
     gl.disable(gl.BLEND);
     gl.useProgram(this.skyProg);
@@ -231,6 +242,8 @@ export class Renderer {
     gl.uniform1f(su.u_thunder, sim.weather.thunder);
     gl.uniform2f(su.u_indoor, this.indoor[0], this.indoor[1]);
     gl.uniform1f(su.u_groundY, this.groundY);
+    gl.uniform1f(su.u_ultra, ultra ? 1 : 0);
+    gl.uniform1f(su.u_theme, sim.mode.theme === 'sakura' ? 1 : 0);
     gl.bindVertexArray(this.fsVAO);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // мир
@@ -254,6 +267,8 @@ export class Renderer {
     gl.uniform1f(tu.u_fogOn, sim.mode.fog ? 1 : 0);
     gl.uniform2f(tu.u_indoor, this.indoor[0], this.indoor[1]);
     gl.uniform1f(tu.u_groundY, this.groundY);
+    gl.uniform1f(tu.u_ultra, ultra ? 1 : 0);
+    gl.uniform1f(tu.u_tod, sim.clock.tod);
     gl.uniform3fv(tu.u_pal, this.pal);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
@@ -262,6 +277,17 @@ export class Renderer {
     this.particles.update(dt * (sim.tick > 0 ? 1 : 0), (x, y) => sim.terrain.solid(x | 0, y | 0), sim.weather.wind);
     this.collect(alpha);
     this.batch.draw(cam, W, H, time, light, { food: this.foodPal, cr: this.crPal, pal: this.pal });
+    if (ultra && this.post) {
+      // позиция солнца на экране (как в шейдере неба)
+      const tod = sim.clock.tod;
+      const ang = (tod - 0.25) * Math.PI * 2;
+      const day = light > 0.3;
+      const sx = day ? 0.5 + 0.42 * Math.cos(ang + Math.PI) : 0.5 + 0.42 * Math.cos(ang);
+      const syTop = day ? 0.18 + 0.55 * (1 - Math.sin(ang)) : 0.18 + 0.55 * (1 + Math.sin(ang));
+      const dusk = Math.exp(-(((tod - 0.75) / 0.06) ** 2)) + Math.exp(-(((tod - 0.26) / 0.06) ** 2));
+      const tint: [number, number, number] = day ? [1, 0.92 - dusk * 0.2, 0.8 - dusk * 0.35] : [0.6, 0.7, 1];
+      this.post.end({ time, sunUV: [sx, 1 - syTop], sunVisible: (day ? 1 : 0.35) * (1 - sim.weather.cloud * 0.7) * (1 - sim.weather.fog * 0.5), night: 1 - light, tint });
+    }
     this.stats.instances = this.batch.count;
     this.stats.ms = performance.now() - t0;
   }
@@ -296,6 +322,32 @@ export class Renderer {
         const x = x0 + Math.random() * (x1 - x0);
         const gy = sim.terrain.skyline[Math.max(0, Math.min(sim.terrain.W - 1, x | 0))];
         if (gy > y0 && gy < y1) this.particles.splash(x, gy - 0.2);
+      }
+    }
+    // лепестки сакур в кадре (в максимальной графике — метель)
+    const ultra = this.quality === 'ultra';
+    for (const p of sim.plants.plants) {
+      if (p.kind !== PK.SAKURA || p.fallen || p.size < 0.6) continue;
+      const R = p.genome.branchLen * p.size;
+      if (p.x + R < x0 || p.x - R > x1) continue;
+      const topY = p.y - p.genome.height * p.size;
+      if (topY - 30 > y1 || p.y < y0) continue;
+      const rate = (ultra ? 0.9 : 0.25) * (1 + Math.abs(sim.weather.wind) * 3);
+      if (Math.random() < rate) this.particles.petal(p.x + (Math.random() * 2 - 1) * R, topY + Math.random() * p.genome.leafR * p.size, sim.weather.wind);
+    }
+    if (ultra && this.cam.zoom > 1.5) {
+      const night = sim.clock.isNight();
+      const area = (x1 - x0) * (y1 - y0);
+      if (night && Math.random() < Math.min(0.8, area / 40000)) {
+        const x = x0 + Math.random() * (x1 - x0);
+        const gy = sim.terrain.standY(Math.max(1, Math.min(sim.terrain.W - 2, x | 0)));
+        if (gy > y0 && gy < y1 + 20) this.particles.firefly(x, gy - 2 - Math.random() * 25);
+      }
+      if (!night && Math.random() < Math.min(0.6, area / 60000)) {
+        const x = x0 + Math.random() * (x1 - x0);
+        const gy = sim.terrain.standY(Math.max(1, Math.min(sim.terrain.W - 2, x | 0)));
+        const yy = gy - 3 - Math.random() * 60;
+        if (yy > y0 && yy < y1) this.particles.mote(x, yy);
       }
     }
     if (Math.abs(sim.weather.wind) > 0.5 && Math.random() < 0.3) {

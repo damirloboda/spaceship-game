@@ -42,7 +42,11 @@ class Game {
     this.ui.onLoad = () => this.load();
     this.ui.onExport = () => this.exportFile();
     this.ui.onImport = (f) => this.importFile(f);
-    this.ui.onSettings = (s) => { if (this.sim) this.sim.settings.agentCap = s.agentCap; this.audio.setVolume(s.volume); };
+    this.ui.onSettings = (s) => {
+      if (this.sim) this.sim.settings.agentCap = s.agentCap;
+      this.audio.setVolume(s.volume);
+      if (this.renderer) { this.renderer.quality = s.quality; this.resize(); }
+    };
     this.ui.onFocus = (x, y) => { this.renderer.cam.tx = x; this.renderer.cam.ty = y; this.renderer.cam.tzoom = Math.max(this.renderer.cam.tzoom, 6); };
     this.ui.onSpawnAnts = (n) => { this.sim.queue({ type: 'spawnAnts', n }); this.ui.note(`+${formatCount(n)} муравьёв в гнезде`, 'good'); };
     window.addEventListener('resize', () => this.resize());
@@ -57,7 +61,7 @@ class Game {
     document.getElementById('loadmsg')!.textContent = `Генерация мира · seed ${seed}…`;
     await new Promise((r) => setTimeout(r, 30));
     const mode = modeByKey(modeKey);
-    const world = await loadWorld({ seed, width: mode.worldW, height: mode.worldH, urban: !mode.chasm, chasmChallenge: mode.chasm });
+    const world = await loadWorld({ seed, width: mode.worldW, height: mode.worldH, urban: !mode.chasm, chasmChallenge: mode.chasm, theme: mode.theme });
     this.setSim(new Simulation(world, mode));
     const u = new URL(location.href);
     u.searchParams.set('mode', modeKey);
@@ -80,6 +84,8 @@ class Game {
     this.canvas.replaceWith(fresh);
     this.canvas = fresh;
     this.renderer = new Renderer(fresh, sim);
+    this.renderer.quality = this.ui.settings.quality;
+    this.audio.setVolume(this.ui.settings.volume);
     if (this.input) this.input.rebind(sim, this.renderer, fresh);
     else this.input = new Input(fresh, sim, this.renderer, this.ui);
     this.ui.bind(sim);

@@ -268,6 +268,8 @@ export class Colony {
     knownFoodMass: number;
     farmNeed: number;
     maxAgents: number;
+    /** 0..1: ночь и холод снижают активность снаружи (как у настоящих муравьёв) */
+    activity?: number;
   }): void {
     const pm = this.priorities.map((p) => PRIORITY_MUL[p]);
     const pop = Math.max(1, this.population());
@@ -297,7 +299,7 @@ export class Colony {
     this.stimulus[T.RESOURCE] = resource * pm[T.RESOURCE];
 
     // желаемое число агентов по задачам: часть колонии всегда внутри (нянчит, отдыхает)
-    const activeFrac = Math.min(0.85, 0.25 + 0.18 * this.stimulus.reduce((a, b) => a + b, 0));
+    const activeFrac = Math.min(0.85, 0.25 + 0.18 * this.stimulus.reduce((a, b) => a + b, 0)) * (ctx.activity ?? 1);
     const totalActive = Math.min(ctx.maxAgents, Math.ceil(pop * activeFrac));
     let ssum = 0;
     for (const v of this.stimulus) ssum += v * v;

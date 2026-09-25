@@ -227,6 +227,7 @@ export class Input {
     else if (k === 'f') { this.follow = !this.follow; if (!this.follow) this.r.cam.follow = -1; else if (this.r.selectedAnt >= 0) this.r.cam.follow = this.r.selectedAnt; }
     else if (k === 'c') { this.cinematic = !this.cinematic; ui.hint(this.cinematic ? 'Кинокамера: включена — камера сама покажет важные моменты' : 'Кинокамера: выключена', 2500); }
     else if (k === 'h') ui.openMenu('help');
+    else if (k === 'g') ui.toggleQuality();
   }
 
   /** Непрерывные клавиши (пан/зум). */

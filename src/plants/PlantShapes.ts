@@ -7,8 +7,9 @@ export const PK = {
   DANDELION: 1,
   BUSH: 2,
   TREE: 3,
+  SAKURA: 4,
 } as const;
-export const PLANT_NAMES = ['трава', 'одуванчик', 'ягодный куст', 'дерево'];
+export const PLANT_NAMES = ['трава', 'одуванчик', 'ягодный куст', 'дерево', 'сакура'];
 
 export interface PlantGenome {
   height: number;
@@ -51,6 +52,8 @@ export function makeGenome(kind: number, seed: number): PlantGenome {
       return { height: r.irange(26, 52), trunkW: 1, branches: 0, branchLen: r.irange(4, 8), leafR: r.range(2.2, 3.2), rootD: r.irange(10, 20), lean: r.range(-0.25, 0.25), stems: 1 };
     case PK.BUSH:
       return { height: r.irange(40, 70), trunkW: 2, branches: r.irange(4, 7), branchLen: r.irange(14, 26), leafR: r.range(7, 11), rootD: r.irange(20, 34), lean: r.range(-0.2, 0.2), stems: r.irange(3, 5) };
+    case PK.SAKURA:
+      return { height: r.irange(95, 150), trunkW: r.irange(5, 7), branches: r.irange(6, 9), branchLen: r.irange(40, 64), leafR: r.range(13, 19), rootD: r.irange(40, 60), lean: r.range(-0.3, 0.3), stems: 1 };
     default:
       return { height: r.irange(150, 230), trunkW: r.irange(6, 9), branches: r.irange(5, 8), branchLen: r.irange(30, 55), leafR: r.range(15, 24), rootD: r.irange(45, 75), lean: r.range(-0.15, 0.15), stems: 1 };
   }
@@ -153,6 +156,51 @@ export function rasterPlant(p: Plant, s: number, emit: Emit, fruitSpots?: [numbe
       for (let k = 0; k < 4; k++) {
         const a = Math.PI / 2 + (k - 1.5) * 0.45;
         line(bx, by + 1, bx + Math.cos(a) * rd, by + 1 + Math.sin(a) * rd, 1, M.ROOT, emit);
+      }
+      return;
+    }
+    case PK.SAKURA: {
+      // сакура: невысокий изогнутый ствол, широкие почти горизонтальные ветви, облака цветов
+      const H = g.height * s;
+      const tw = Math.max(1, Math.round(g.trunkW * Math.sqrt(s)));
+      const bend = (t: number) => bx + g.lean * H * 0.5 * Math.sin(t * 2.6) + g.lean * t * H * 0.3;
+      let top: [number, number] = [bx, by];
+      for (let i = 0; i < H; i++) {
+        const t = i / H;
+        const cx = bend(t);
+        const w = Math.max(1, Math.round(tw * (1 - t * 0.5)));
+        for (let k = 0; k < w; k++) emit(Math.round(cx - w / 2 + k + 0.5), by - i, M.WOOD);
+        top = [cx, by - i];
+      }
+      for (let k = 1; k <= Math.round(tw * 0.9); k++) {
+        emit(Math.round(bx - tw / 2 - k), by - Math.max(0, Math.round(tw * 0.7) - k), M.WOOD);
+        emit(Math.round(bx + tw / 2 + k), by - Math.max(0, Math.round(tw * 0.7) - k), M.WOOD);
+      }
+      const nb = Math.max(1, Math.round(g.branches * Math.min(1, s * 1.3)));
+      for (let b = 0; b < nb; b++) {
+        const t = 0.45 + 0.5 * (b / Math.max(1, nb - 1));
+        const side = b % 2 === 0 ? -1 : 1;
+        const sx = bend(t);
+        const sy = by - t * H;
+        const len = g.branchLen * s * rng.range(0.7, 1.15) * (1 - t * 0.3);
+        // ветвь чуть поднимается, потом изгибается вниз под тяжестью цветов
+        const mx = sx + side * len * 0.55;
+        const my = sy - len * rng.range(0.12, 0.3);
+        const ex = sx + side * len;
+        const ey = my + len * rng.range(0.02, 0.15);
+        line(sx, sy, mx, my, Math.max(1, Math.round(tw * 0.4)), M.WOOD, emit);
+        line(mx, my, ex, ey, Math.max(1, Math.round(tw * 0.25)), M.WOOD, emit);
+        const r = g.leafR * s * rng.range(0.8, 1.2);
+        blob(ex, ey - 2, r, r * 0.6, p.seed + b * 17, M.BLOSSOM, emit);
+        blob(mx, my - 3, r * 0.8, r * 0.5, p.seed + b * 29, M.BLOSSOM, emit);
+        blob(ex - side * r * 0.4, ey + r * 0.2, r * 0.45, r * 0.3, p.seed + b * 31, M.LEAF, emit);
+        if (fruitSpots && s > 0.6) fruitSpots.push([Math.round(ex), Math.round(ey + r * 0.3)]);
+      }
+      blob(top[0], top[1] - g.leafR * s * 0.3, g.leafR * s * 1.4, g.leafR * s * 0.85, p.seed + 777, M.BLOSSOM, emit);
+      const rd = g.rootD * s;
+      for (let k = 0; k < 6; k++) {
+        const a = Math.PI / 2 + (k - 2.5) * 0.45;
+        line(bx, by + 1, bx + Math.cos(a) * rd * 0.8, by + 1 + Math.sin(a) * rd * 0.8, k === 2 || k === 3 ? 2 : 1, M.ROOT, emit);
       }
       return;
     }

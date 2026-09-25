@@ -132,13 +132,14 @@ export class Terrain {
   }
 
   isOpaqueForSky(m: number): boolean {
-    return IS_SOLID[m] === 1 && m !== M.LEAF && m !== M.GRASS && m !== M.STEM && m !== M.GLASS;
+    return IS_SOLID[m] === 1 && m !== M.LEAF && m !== M.GRASS && m !== M.STEM && m !== M.GLASS && m !== M.FLOWER && m !== M.BLOSSOM;
   }
 
   updateSkyline(x: number): void {
     const W = this.W;
     let y = 0;
-    while (y < this.H && !this.isOpaqueForSky(this.mat[y * W + x])) y++;
+    // растения (стволы, кроны) — не небосвод: под деревом тень, а не подземелье
+    while (y < this.H && (!this.isOpaqueForSky(this.mat[y * W + x]) || this.plant[y * W + x] !== 0)) y++;
     this.skyline[x] = y;
   }
 

@@ -13,5 +13,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    exclude: process.env.DEBUG_TESTS ? ['node_modules/**'] : ['tests/tmp/**', 'node_modules/**'],
   },
 } as any);

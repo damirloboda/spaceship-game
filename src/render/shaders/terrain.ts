@@ -25,6 +25,8 @@ uniform int u_overlay;
 uniform float u_fogOn;
 uniform vec2 u_indoor;
 uniform float u_groundY;
+uniform float u_ultra;
+uniform float u_tod;
 uniform vec3 u_pal[32];
 
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -42,7 +44,7 @@ vec4 cellAt(ivec2 c) {
 }
 int matOf(vec4 t) { return int(t.r * 255.0 + 0.5); }
 bool solidM(int m) { return m != 0 && m != 23; }
-bool foliageM(int m) { return m == 7 || m == 8 || m == 27; }
+bool foliageM(int m) { return m == 7 || m == 8 || m == 27 || m == 28; }
 bool opaqueM(int m) { return solidM(m) && !foliageM(m) && m != 24; }
 
 // Кадр свет/тень: небо сверху, темнеет в глубине, днём/ночью
@@ -110,6 +112,16 @@ vec3 matColor(int m, vec2 w, ivec2 c, vec2 f, float det, out float alpha) {
     float pet = 0.5 + 0.5 * cos(atan(q.y, q.x) * 6.0 + r * 6.0);
     col = mix(base, base * vec3(1.1, 1.05, 0.7), pet);
     alpha = smoothstep(0.55, 0.35, length(q) - pet * 0.1);
+  } else if (m == 28) {
+    // цветы сакуры: облака мелких пятилепестковых цветков, розовый градиент, просветы
+    vec2 q = fract(w * 1.3) - 0.5;
+    float fl = 0.5 + 0.5 * cos(atan(q.y, q.x) * 5.0 + h21(floor(w * 1.3)) * 6.0);
+    float petals = smoothstep(0.5, 0.3, length(q) - fl * 0.12);
+    float cl = vnoise(w * 0.9 + 4.0);
+    col = mix(vec3(0.99, 0.84, 0.9), vec3(0.93, 0.52, 0.66), cl * 0.8 + 0.2 * (1.0 - f.y));
+    col = mix(col, vec3(1.0, 0.95, 0.97), petals * 0.35);
+    col *= 0.9 + 0.2 * h21(floor(w * 1.3) + 3.0);
+    alpha = mix(1.0, smoothstep(0.12, 0.3, vnoise(w * 0.8 + 21.0) * 0.6 + vnoise(w * 3.0) * 0.4 + 0.12), det) * (0.9 + 0.1 * petals);
   } else if (m == 24) {
     col *= 0.85 + 0.3 * smoothstep(0.0, 0.5, 0.5 - abs(f.x - 0.5));
   } else if (m == 9) {
@@ -181,6 +193,14 @@ void main() {
   if (solidM(m) || m == 23) {
     float a;
     vec3 col = matColor(m, w, c, f, det, a);
+    // органичные края листвы и цветов: скругление углов по соседям
+    if ((m == 7 || m == 28) && det > 0.3) {
+      float en = vnoise(w * 2.7 + 9.0) * 0.35;
+      if (matOf(cellAt(c + ivec2(0, -1))) != m) a *= smoothstep(0.0, 0.35 + en, f.y);
+      if (matOf(cellAt(c + ivec2(0, 1))) != m) a *= smoothstep(0.0, 0.35 + en, 1.0 - f.y);
+      if (matOf(cellAt(c + ivec2(-1, 0))) != m) a *= smoothstep(0.0, 0.35 + en, f.x);
+      if (matOf(cellAt(c + ivec2(1, 0))) != m) a *= smoothstep(0.0, 0.35 + en, 1.0 - f.x);
+    }
     if (m == 23) {
       // паутина: тонкие нити
       vec2 q = f - 0.5;
@@ -217,6 +237,12 @@ void main() {
       if (lfE) e *= mix(0.75, 1.0, smoothstep(0.0, 0.25, f.x));
       if (rtE) e *= mix(0.75, 1.0, smoothstep(0.0, 0.25, 1.0 - f.x));
       col *= mix(1.0, e, det);
+      if (u_ultra > 0.5 && upE && !under) {
+        // тёплый контровой свет солнца по верхней кромке (утром/вечером — золотой)
+        float dusk = exp(-pow((u_tod - 0.75) / 0.06, 2.0)) + exp(-pow((u_tod - 0.26) / 0.06, 2.0));
+        vec3 rim = mix(vec3(1.0, 0.95, 0.8), vec3(1.0, 0.65, 0.35), clamp(dusk, 0.0, 1.0));
+        col += rim * smoothstep(0.3, 0.0, f.y) * 0.22 * u_light;
+      }
       // натоптанные дороги: верх поверхности, где ходит много муравьёв
       if (upE) {
         vec4 ph = texture(u_pher, (w - vec2(0.0, 1.0)) / u_world);
@@ -257,6 +283,14 @@ void main() {
       float edge = smoothstep(0.12, 0.0, f.y - surf) * (above > 0.05 ? 0.0 : 1.0);
       wc += edge * 0.35;
       float wa = 0.62 + edge * 0.3;
+      if (u_ultra > 0.5 && !under) {
+        // отражение неба, солнечные блики и рябь на открытой воде
+        float ripple = vnoise(vec2(w.x * 0.8 - u_time * 0.6, w.y * 3.0 + u_time)) * vnoise(vec2(w.x * 1.7 + u_time * 0.4, w.y * 2.0));
+        vec3 skyRef = mix(vec3(0.55, 0.72, 0.9), vec3(0.08, 0.1, 0.2), 1.0 - u_light);
+        wc = mix(wc, skyRef, 0.35 + 0.2 * ripple);
+        wc += vec3(1.0, 0.92, 0.75) * pow(ripple, 6.0) * 3.0 * u_light;
+        wa = 0.72 + edge * 0.25;
+      }
       vec4 fg = vec4(wc * light * wa, wa);
       res = fg + res * (1.0 - fg.a);
     }

@@ -17,6 +17,8 @@ uniform float u_wind;
 uniform float u_thunder;
 uniform vec2 u_indoor;
 uniform float u_groundY;
+uniform float u_ultra;
+uniform float u_theme;
 
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p) {
@@ -72,6 +74,26 @@ void main() {
   float cloudMask = smoothstep(0.55 - u_cloud * 0.3, 0.8, cl) * clamp(sy * 1.5, 0.0, 1.0);
   vec3 cloudCol = mix(vec3(0.3, 0.32, 0.38), vec3(0.95, 0.96, 1.0), day) * (0.75 + 0.25 * cl);
   col = mix(col, cloudCol, cloudMask * 0.85);
+  // максимальная графика: гряды гор в воздушной дымке и дальние кроны
+  if (u_ultra > 0.5) {
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k);
+      float par = 0.08 + fk * 0.08;
+      float xx = (w.x * par + u_cam.x * (1.0 - par)) * (0.004 + fk * 0.002);
+      // дальняя гряда выше и туманнее, ближняя — ниже и контрастнее
+      float base = fk == 0.0 ? 170.0 : fk == 1.0 ? 110.0 : 55.0;
+      float hgt = base * (0.45 + 0.55 * fbm(vec2(xx + fk * 13.0, fk)));
+      float top = u_groundY - 6.0 - hgt;
+      if (w.y > top) {
+        vec3 far = mix(horizon, vec3(0.28, 0.36, 0.42) * (0.35 + day * 0.65), 0.18 + fk * 0.2);
+        if (u_theme > 0.5 && k == 2) far = mix(far, vec3(0.96, 0.7, 0.8) * (0.35 + day * 0.65), 0.5);
+        float edge = smoothstep(0.0, 6.0, w.y - top);
+        col = mix(col, far, 0.8 * edge);
+      }
+    }
+    // гало солнца
+    col += vec3(1.0, 0.8, 0.55) * exp(-ds * 3.0) * 0.25 * day * (1.0 - u_cloud * 0.6);
+  }
   // далёкие силуэты: огромные стебли травы сада (масштаб: муравей в 1 клетку)
   float farx = w.x * 0.35 + u_cam.x * 0.65;
   float blade = 0.0;
@@ -86,7 +108,7 @@ void main() {
     if (w.y > top) blade = max(blade, smoothstep(wdt, wdt * 0.6, abs(cx)) * (0.25 + fk * 0.12));
   }
   vec3 silh = mix(vec3(0.05, 0.08, 0.06), vec3(0.3, 0.45, 0.3), day) * 0.8;
-  col = mix(col, silh, blade * (1.0 - u_fog * 0.6) * smoothstep(1.5, 5.0, u_zoom));
+  col = mix(col, silh, blade * (1.0 - u_fog * 0.6) * smoothstep(1.5, 5.0, u_zoom) * (u_ultra > 0.5 ? 0.35 : 1.0));
   // туман
   col = mix(col, vec3(0.7, 0.72, 0.75) * (0.3 + day * 0.7), u_fog * 0.6);
   // дождь: косые штрихи

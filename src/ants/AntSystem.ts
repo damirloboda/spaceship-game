@@ -243,6 +243,13 @@ export class AntSystem {
     if (nav[ci] & N_WEB) speed *= 0.12;
     if (nav[ci] & N_FOLIAGE) speed *= 0.75;
     // холод замедляет, жара у поверхности — тоже
+    // ливень прижимает к земле тех, кто на открытой поверхности
+    if (sim.weather.rain > 0.3 && cy <= t.skyline[cx] + 1) speed *= 1 - sim.weather.rain * 0.45;
+    // вверх по стене с грузом — тяжелее, вниз — легче
+    if (a.cargo[i] !== CG.NONE) {
+      const up = -Math.sin(h);
+      if (up > 0.5) speed *= 1 - 0.35 * up;
+    }
     const temp = t.tempAt(cx, cy);
     if (temp < 10) speed *= Math.max(0.35, 1 - (10 - temp) * 0.06);
     else if (temp > 30) speed *= 0.85;
@@ -330,8 +337,13 @@ export class AntSystem {
     const a = sim.ants;
     const t = sim.terrain;
     const wet = t.water[(a.y[i] | 0) * t.W + (a.x[i] | 0)] > 110;
-    a.vy[i] = wet ? Math.max(-2, a.vy[i] - 6 * dt) : Math.min(28, a.vy[i] + 45 * dt);
-    a.vx[i] *= 0.98;
+    // маленькое тело: сопротивление воздуха огромно относительно веса, предельная скорость низкая
+    // (настоящие муравьи падают с дерева и не разбиваются), а ветер сносит в полёте
+    const vt = 9;
+    a.vy[i] = wet ? Math.max(-2, a.vy[i] - 6 * dt) : a.vy[i] + (45 - (45 / vt) * a.vy[i]) * dt;
+    const t0 = sim.terrain;
+    const above = (a.y[i] | 0) <= t0.skyline[Math.max(0, Math.min(t0.W - 1, a.x[i] | 0))];
+    a.vx[i] += ((above ? sim.weather.wind * 4 : 0) - a.vx[i]) * Math.min(1, dt * 2);
     const nx = a.x[i] + a.vx[i] * dt;
     const ny = a.y[i] + a.vy[i] * dt;
     a.heading[i] += dt * 6;
@@ -342,7 +354,7 @@ export class AntSystem {
       a.vy[i] = 0;
       a.y[i] = Math.floor(ny) - 0.01;
       if (t.solid(a.x[i] | 0, a.y[i] | 0)) a.y[i] -= 1;
-      if (impact > 26) this.hurt(i, 0.1, 3);
+      void impact;
       this.land(i);
       return;
     }

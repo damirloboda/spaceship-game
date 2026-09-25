@@ -4,7 +4,7 @@ import { Simulation } from '../src/sim/Simulation';
 
 export function makeSim(seed = 7, mode = 'sandbox'): Simulation {
   const m = modeByKey(mode);
-  return new Simulation(generateWorld({ seed, width: m.worldW, height: m.worldH, urban: !m.chasm, chasmChallenge: m.chasm }), m);
+  return new Simulation(generateWorld({ seed, width: m.worldW, height: m.worldH, urban: !m.chasm, chasmChallenge: m.chasm, theme: m.theme }), m);
 }
 
 export function run(sim: Simulation, seconds: number): void {

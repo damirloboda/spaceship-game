@@ -1184,7 +1184,7 @@ export class AntBrain {
         const y = Math.round(gy - sim.rng.range(1, 70));
         if (!t.inBounds(x, y)) continue;
         const m = t.get(x, y);
-        if ((m === M.LEAF || m === M.GRASS) && t.plant[y * t.W + x]) {
+        if ((m === M.LEAF || m === M.GRASS || m === M.BLOSSOM) && t.plant[y * t.W + x]) {
           if (sim.nav.walkable(x, y - 1) || sim.nav.walkable(x - 1, y) || sim.nav.walkable(x + 1, y) || sim.nav.walkable(x, y + 1)) {
             a.tx[i] = x;
             a.ty[i] = y;
@@ -1197,7 +1197,7 @@ export class AntBrain {
     const x = a.tx[i] | 0;
     const y = a.ty[i] | 0;
     const m = t.get(x, y);
-    if (m !== M.LEAF && m !== M.GRASS) { a.tx[i] = -1; return; }
+    if (m !== M.LEAF && m !== M.GRASS && m !== M.BLOSSOM) { a.tx[i] = -1; return; }
     const dx = x + 0.5 - a.x[i];
     const dy = y + 0.5 - a.y[i];
     if (dx * dx + dy * dy > 3.2) {

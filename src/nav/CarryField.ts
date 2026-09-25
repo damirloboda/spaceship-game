@@ -9,7 +9,7 @@ const MAX_STEP = 2;
 /** Проходимо для груза: воздух, листва, стебли (груз продирается сквозь траву). */
 function passable(t: Terrain, i: number): boolean {
   const m = t.mat[i];
-  return !IS_SOLID[m] || m === M.LEAF || m === M.GRASS || m === M.FLOWER || m === M.STEM || (m === M.WOOD && t.plant[i] !== 0);
+  return !IS_SOLID[m] || m === M.LEAF || m === M.GRASS || m === M.FLOWER || m === M.BLOSSOM || m === M.STEM || (m === M.WOOD && t.plant[i] !== 0);
 }
 
 /**

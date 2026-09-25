@@ -42,7 +42,7 @@ export class PlantSystem {
   }
 
   randomLeafy(): [number, number] | null {
-    const cands = this.plants.filter((p) => !p.dead && (p.kind === PK.BUSH || p.kind === PK.TREE));
+    const cands = this.plants.filter((p) => !p.dead && (p.kind === PK.BUSH || p.kind === PK.TREE || p.kind === PK.SAKURA));
     if (cands.length === 0) return null;
     const p = cands[this.sim.rng.int(cands.length)];
     return [p.x + this.sim.rng.range(-8, 8), p.y - p.genome.height * p.size * 0.7];
@@ -138,7 +138,7 @@ export class PlantSystem {
     }
     // рост
     if (p.size < 1) {
-      const rate = (p.kind === PK.TREE ? 0.0009 : p.kind === PK.BUSH ? 0.002 : 0.006) * (0.3 + light) * Math.min(1, p.water + 0.2);
+      const rate = (p.kind === PK.TREE || p.kind === PK.SAKURA ? 0.0009 : p.kind === PK.BUSH ? 0.002 : 0.006) * (0.3 + light) * Math.min(1, p.water + 0.2);
       const before = Math.floor(p.size * 20);
       p.size = Math.min(1, p.size + rate * dt);
       if (Math.floor(p.size * 20) !== before) this.raster(p);
@@ -186,6 +186,10 @@ export class PlantSystem {
         } else { p.flower = 0; p.seedTimer = 120; this.raster(p); }
       }
     }
+    if (p.kind === PK.SAKURA && p.size > 0.7) {
+      // лепестки опадают постоянно, на ветру — метелью; на земле это ресурс для грибной фермы
+      if (sim.rng.chance(dt * (0.05 + Math.abs(sim.weather.wind) * 0.3))) this.shed(p, 1, M.BLOSSOM);
+    }
     if (p.kind === PK.TREE && p.size > 0.9) {
       p.seedTimer -= dt;
       if (p.seedTimer <= 0) {
@@ -204,7 +208,7 @@ export class PlantSystem {
   }
 
   /** Сбросить несколько листьев как предметы (ресурс для грибной фермы). */
-  private shed(p: Plant, n: number): void {
+  private shed(p: Plant, n: number, mat: number = M.LEAF): void {
     const sim = this.sim;
     const t = sim.terrain;
     const spots: [number, number][] = [];
@@ -214,9 +218,10 @@ export class PlantSystem {
       for (let r = 0; r < 12; r++) {
         const lx = x + sim.rng.irange(-4, 4);
         const ly = y + sim.rng.irange(-4, 4);
-        if (t.get(lx, ly) === M.LEAF && t.plant[ly * t.W + lx] === p.id) {
+        if (t.get(lx, ly) === mat && t.plant[ly * t.W + lx] === p.id) {
           t.set(lx, ly, M.AIR);
-          sim.food.spawn(FK.LEAF, lx + 0.5, ly + 0.5, 1);
+          if (mat === M.BLOSSOM) sim.food.spawn(FK.PETAL, lx + 0.5, ly + 0.5, 0.5, { airborne: true });
+          else sim.food.spawn(FK.LEAF, lx + 0.5, ly + 0.5, 1);
           break;
         }
       }
@@ -234,7 +239,7 @@ export class PlantSystem {
 
   private die(p: Plant): void {
     p.dead = true;
-    if (p.kind === PK.TREE || p.kind === PK.BUSH) this.sim.bus.emit({ type: 'notice', text: `Засохло: ${['трава', 'одуванчик', 'куст', 'дерево'][p.kind]}`, x: p.x, y: p.y, tone: 'info' });
+    if (p.kind === PK.TREE || p.kind === PK.BUSH || p.kind === PK.SAKURA) this.sim.bus.emit({ type: 'notice', text: `Засохло: ${['трава', 'одуванчик', 'куст', 'дерево', 'сакура'][p.kind]}`, x: p.x, y: p.y, tone: 'info' });
   }
 
   /** Падение: всё надземное удаляется, ствол ложится бревном по ветру, листва — ресурсом. */
@@ -256,11 +261,11 @@ export class PlantSystem {
         if (t.plant[i] !== p.id) continue;
         const m = t.mat[i];
         if (m === M.WOOD || m === M.STEM) wood++;
-        if (m === M.LEAF || m === M.FLOWER || m === M.GRASS) leaves++;
+        if (m === M.LEAF || m === M.FLOWER || m === M.GRASS || m === M.BLOSSOM) leaves++;
         t.plant[i] = 0;
         t.set(x, y, M.AIR);
       }
-    if (p.kind === PK.TREE || p.kind === PK.BUSH) {
+    if (p.kind === PK.TREE || p.kind === PK.BUSH || p.kind === PK.SAKURA) {
       const dir = sim.weather.wind !== 0 ? Math.sign(sim.weather.wind) : sim.rng.sign();
       const len = Math.round(g.height * p.size * 0.9);
       const thick = Math.max(1, Math.round(g.trunkW * 0.7));

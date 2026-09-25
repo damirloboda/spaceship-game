@@ -9,6 +9,7 @@ FOLIAGE[M.GRASS] = 1;
 FOLIAGE[M.FLOWER] = 1;
 FOLIAGE[M.STEM] = 1;
 FOLIAGE[M.WEB] = 1;
+FOLIAGE[M.BLOSSOM] = 1;
 import { Terrain } from '../world/Terrain';
 import { FOOD_KINDS, foodRadius, FK } from './FoodTypes';
 
@@ -305,6 +306,20 @@ export class FoodSystem {
         continue;
       }
       it.vy = 0;
+      // круглое (ягода, семя, огрызок) скатывается по склону, если его никто не держит
+      if (it.carriers.length === 0 && (def.shape === 0 || def.shape === 1)) {
+        const bx = it.x;
+        const by = it.y + it.r * 0.85 + 0.35;
+        const lowL = !this.solidAt(bx - it.r - 0.4, by) && !this.solidAt(bx - it.r - 0.4, it.y);
+        const lowR = !this.solidAt(bx + it.r + 0.4, by) && !this.solidAt(bx + it.r + 0.4, it.y);
+        const slope = lowL && !lowR ? -1 : lowR && !lowL ? 1 : 0;
+        if (slope !== 0) it.vx += slope * 12 * dt;
+        it.vx *= Math.exp(-dt * (slope === 0 ? 6 : 1.2)); // трение качения
+        if (Math.abs(it.vx) > 0.02) {
+          const nx = it.x + it.vx * dt;
+          if (!this.overlaps(it, nx, it.y)) { it.x = nx; moved = true; } else it.vx = 0;
+        }
+      }
       // выталкивание, если засыпало
       if (this.overlaps(it, it.x, it.y)) {
         for (let k = 1; k <= 6; k++) if (!this.overlaps(it, it.x, it.y - k * 0.5)) { it.y -= k * 0.5; moved = true; break; }

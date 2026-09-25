@@ -151,6 +151,8 @@ export class ColonyDirector {
       knownFoodMass: known,
       farmNeed: farms > 0 ? Math.max(0, 1 - col.leaves / 120) : 0,
       maxAgents: col.agentBudget,
+      // ночью и в холод снаружи меньше фуражиров; в сильную жару — полуденная пауза
+      activity: (sim.clock.isNight() ? 0.6 : 1) * Math.max(0.35, Math.min(1, (sim.weather.temperature(sim.clock) - 4) / 10)) * (sim.weather.temperature(sim.clock) > 33 ? 0.7 : 1),
     });
     void dt;
   }

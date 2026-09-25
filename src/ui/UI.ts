@@ -52,7 +52,7 @@ export class UI {
   onLoad: (() => void) | null = null;
   onExport: (() => void) | null = null;
   onImport: ((f: File) => void) | null = null;
-  onSettings: ((s: { agentCap: number; volume: number }) => void) | null = null;
+  onSettings: ((s: { agentCap: number; volume: number; quality: 'normal' | 'ultra' }) => void) | null = null;
   onFocus: ((x: number, y: number) => void) | null = null;
   onSpawnAnts: ((n: number) => void) | null = null;
   private el: Record<string, HTMLElement> = {};
@@ -60,7 +60,7 @@ export class UI {
   private hudT = 0;
   private notes: HTMLElement[] = [];
   selectedMode = 'sandbox';
-  settings = { agentCap: 12000, volume: 0.6 };
+  settings: { agentCap: number; volume: number; quality: 'normal' | 'ultra' } = loadSettings();
 
   constructor(private root: HTMLElement) {}
 
@@ -101,10 +101,12 @@ export class UI {
     tr.innerHTML = `<div id="clock"><div id="cTime"></div><div class="w" id="cWeather"></div></div>
       <div class="seg" id="speed"><button class="btn" data-s="0">❚❚</button><button class="btn on" data-s="1">1×</button><button class="btn" data-s="2">2×</button><button class="btn" data-s="4">4×</button><button class="btn" data-s="8">8×</button></div>
       <button class="btn" id="bOverlay" title="Феромоны (P)">☍</button>
+      <button class="btn" id="bGfx" title="Графика: обычная / максимальная (G)">✦</button>
       <button class="btn" id="bMenu">☰</button>`;
     this.root.appendChild(tr);
     tr.querySelectorAll<HTMLButtonElement>('#speed .btn').forEach((b) => b.addEventListener('click', () => this.setSpeed(Number(b.dataset.s))));
     tr.querySelector('#bMenu')!.addEventListener('click', () => this.openMenu());
+    tr.querySelector('#bGfx')!.addEventListener('click', () => this.toggleQuality());
     // правая панель
     const side = this.h('div', 'panel');
     side.id = 'side';
@@ -153,13 +155,14 @@ export class UI {
     const modal = this.h('div');
     modal.id = 'modal';
     this.root.appendChild(modal);
-    for (const id of ['hPop', 'hPopBreak', 'hFood', 'hEnergy', 'hRes', 'hBrood', 'hTerr', 'hLvl', 'hLvlT', 'hXp', 'hZone', 'cTime', 'cWeather', 'tasks', 'mind', 'modeName', 'bOverlay']) this.el[id] = document.getElementById(id)!;
+    for (const id of ['bGfx', 'hPop', 'hPopBreak', 'hFood', 'hEnergy', 'hRes', 'hBrood', 'hTerr', 'hLvl', 'hLvlT', 'hXp', 'hZone', 'cTime', 'cWeather', 'tasks', 'mind', 'modeName', 'bOverlay']) this.el[id] = document.getElementById(id)!;
     this.el.tip = tip;
     this.el.hint = hint;
     this.el.feed = feed;
     this.el.modal = modal;
     this.el.perf = perf;
     this.el.modeName.textContent = sim.mode.name;
+    this.el.bGfx.classList.toggle('on', this.settings.quality === 'ultra');
     this.setTool(this.tool);
     this.refreshPriorities();
   }
@@ -290,6 +293,7 @@ export class UI {
       <h3>Сохранение</h3>
       <div class="flex"><button class="btn" id="mSave">Сохранить</button><button class="btn" id="mLoad">Загрузить</button><button class="btn" id="mExport">Экспорт в файл</button><label class="btn">Импорт<input type="file" id="mImport" accept=".roy" style="display:none"></label></div>
       <h3>Настройки</h3>
+      <div class="flex" style="margin-bottom:8px">Графика <span class="seg"><button class="btn${this.settings.quality === 'normal' ? ' on' : ''}" data-q="normal">Обычная</button><button class="btn${this.settings.quality === 'ultra' ? ' on' : ''}" data-q="ultra">Максимальная ✦</button></span><span class="sub">свечение, лучи солнца, отражения, светлячки, метель лепестков</span></div>
       <div class="flex">Бюджет агентов <select id="mCap">${[3000, 6000, 12000, 25000, 50000].map((v) => `<option value="${v}"${v === this.settings.agentCap ? ' selected' : ''}>${v}</option>`).join('')}</select>
       Громкость <input type="range" id="mVol" min="0" max="1" step="0.05" value="${this.settings.volume}"></div>
       <h3>Управление</h3>
@@ -325,7 +329,14 @@ export class UI {
     });
     const cap = m.querySelector<HTMLSelectElement>('#mCap')!;
     const vol = m.querySelector<HTMLInputElement>('#mVol')!;
-    const apply = () => { this.settings = { agentCap: Number(cap.value), volume: Number(vol.value) }; this.onSettings?.(this.settings); };
+    const apply = () => { this.settings = { ...this.settings, agentCap: Number(cap.value), volume: Number(vol.value) }; saveSettings(this.settings); this.onSettings?.(this.settings); };
+    m.querySelectorAll<HTMLButtonElement>('[data-q]').forEach((b) => b.addEventListener('click', () => {
+      this.settings = { ...this.settings, quality: b.dataset.q as 'normal' | 'ultra' };
+      m.querySelectorAll('[data-q]').forEach((q) => q.classList.toggle('on', q === b));
+      saveSettings(this.settings);
+      this.onSettings?.(this.settings);
+      this.el.bGfx.classList.toggle('on', this.settings.quality === 'ultra');
+    }));
     cap.addEventListener('change', apply);
     vol.addEventListener('input', apply);
     m.querySelector('#mClose')!.addEventListener('click', () => this.closeMenu());
@@ -341,9 +352,31 @@ export class UI {
     return this.el.modal?.classList.contains('open') ?? false;
   }
 
+  toggleQuality(): void {
+    this.settings = { ...this.settings, quality: this.settings.quality === 'ultra' ? 'normal' : 'ultra' };
+    saveSettings(this.settings);
+    this.onSettings?.(this.settings);
+    this.el.bGfx.classList.toggle('on', this.settings.quality === 'ultra');
+    this.hint(this.settings.quality === 'ultra' ? '<b>Графика: максимальная.</b> Свечение, лучи солнца сквозь кроны, отражения в воде, светлячки ночью, метель лепестков.' : '<b>Графика: обычная.</b> Быстрее на слабых устройствах.', 4000);
+  }
+
   setOverlayOn(on: boolean): void {
     this.el.bOverlay?.classList.toggle('on', on);
   }
+}
+
+function loadSettings(): { agentCap: number; volume: number; quality: 'normal' | 'ultra' } {
+  const def = { agentCap: 12000, volume: 0.6, quality: (typeof window !== 'undefined' && window.innerWidth < 760 ? 'normal' : 'ultra') as 'normal' | 'ultra' };
+  try {
+    const s = JSON.parse(localStorage.getItem('roy-settings') || 'null');
+    return s ? { ...def, ...s } : def;
+  } catch {
+    return def;
+  }
+}
+
+function saveSettings(s: object): void {
+  try { localStorage.setItem('roy-settings', JSON.stringify(s)); } catch { /* приватный режим */ }
 }
 
 function hashStr(s: string): number {

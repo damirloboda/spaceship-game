@@ -15,6 +15,8 @@ export interface WorldParams {
   urban: boolean;
   /** сценарий "великая пропасть" */
   chasmChallenge?: boolean;
+  /** тема мира: обычный сад или японский сакуровый сад */
+  theme?: 'garden' | 'sakura';
 }
 
 export interface FoodSpawn { kind: number; x: number; y: number; mass: number }
@@ -103,6 +105,9 @@ export function generateWorld(params: WorldParams): WorldData {
     // выравниваем площадку гнезда
     const dn = Math.abs(x - nestX);
     if (dn < 40) h = h + (groundBase - h) * (1 - dn / 40);
+    // берега канавы — вровень с бортиком (иначе гладкий пластик торчит стеной)
+    const dd = x < ditchX0 ? ditchX0 - x : x > ditchX1 ? x - ditchX1 : 0;
+    if (dd < 36) h = dd < 8 ? groundBase : h + (groundBase - h) * (1 - (dd - 8) / 28);
     // пруд — впадина
     const dp = Math.abs(x - pondX);
     if (urban && dp < 60) h += Math.cos((dp / 60) * Math.PI * 0.5) * 18;
@@ -241,6 +246,25 @@ export function generateWorld(params: WorldParams): WorldData {
   addPlant(PK.TREE, meadowEnd + 40, 1);
   addPlant(PK.TREE, rng.range(60, meadowEnd - 80), 0.8);
   addPlant(PK.BUSH, ditchX1 + 70, 1);
+  // сакура: одна у гнезда в любом мире, в сакуровом саду — целая аллея
+  addPlant(PK.SAKURA, nestX + 55, 1);
+  addPlant(PK.SAKURA, ditchX1 + 150, 0.9);
+  if (params.theme === 'sakura') {
+    for (let x = meadowEnd + 30; x < gardenEnd - 20; x += rng.irange(70, 110)) {
+      if (Math.abs(x - nestX) < 30 || (x > ditchX0 - 30 && x < ditchX1 + 30) || (urban && Math.abs(x - pondX) < 70)) continue;
+      addPlant(PK.SAKURA, x, rng.range(0.8, 1));
+    }
+    for (let x = 30; x < meadowEnd - 20; x += rng.irange(90, 140)) addPlant(PK.SAKURA, x, rng.range(0.6, 1));
+    // каменные фонари торо у пруда и дорожки
+    const lantern = (lx: number) => {
+      const gy = firstSolidSkipPlants(t, lx);
+      for (let y = gy - 16; y < gy; y++) for (let x = lx - 1; x <= lx + 1; x++) if (t.get(x, y) === M.AIR) t.setRaw(x, y, M.STONE);
+      for (let y = gy - 24; y < gy - 16; y++) for (let x = lx - 5; x <= lx + 5; x++) if (t.get(x, y) === M.AIR && (y !== gy - 20 || Math.abs(x - lx) > 2)) t.setRaw(x, y, M.STONE);
+      for (let x = lx - 7; x <= lx + 7; x++) if (t.get(x, gy - 25) === M.AIR) t.setRaw(x, gy - 25, M.STONE);
+    };
+    if (urban) { lantern(pondX - 72); lantern(pondX + 72); }
+    lantern(nestX - 40);
+  }
   addPlant(PK.BUSH, nestX - 90, 0.6);
   for (let x = 20; x < gardenEnd; x += rng.irange(18, 42)) {
     if (Math.abs(x - nestX) < 14 || (x > ditchX0 - 10 && x < ditchX1 + 10) || (urban && Math.abs(x - pondX) < 66)) continue;
@@ -348,6 +372,7 @@ export function placePlantCell(t: Terrain, plantId: number, x: number, y: number
   if (raw) t.setRaw(x, y, m);
   else t.set(x, y, m);
   t.plant[i] = plantId;
+  if (!raw) t.updateSkyline(x);
   return true;
 }
 

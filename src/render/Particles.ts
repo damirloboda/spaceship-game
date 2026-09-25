@@ -47,22 +47,40 @@ export class Particles {
     this.spawn(K.LEAF, x, y, wind * 6 + this.rng.range(-1, 1), this.rng.range(0.5, 2), 6, 0.5 + this.rng.next() * 0.4, 7);
   }
 
+  petal(x: number, y: number, wind: number): void {
+    this.spawn(33, x, y, wind * 5 + this.rng.range(-1, 1), this.rng.range(0.4, 1.4), 9, 0.45 + this.rng.next() * 0.25, 28);
+  }
+
+  firefly(x: number, y: number): void {
+    this.spawn(37, x, y, this.rng.range(-1.5, 1.5), this.rng.range(-1, 1), 8 + this.rng.next() * 6, 0.9 + this.rng.next() * 0.5, 0);
+  }
+
+  mote(x: number, y: number): void {
+    this.spawn(38, x, y, this.rng.range(-0.3, 0.3), this.rng.range(-0.2, 0.2), 6 + this.rng.next() * 4, 0.35 + this.rng.next() * 0.3, 0);
+  }
+
   update(dt: number, solid: (x: number, y: number) => boolean, wind: number): void {
     let w = 0;
     for (let i = 0; i < this.n; i++) {
       this.life[i] -= dt;
       if (this.life[i] <= 0) continue;
       const k = this.kind[i];
-      if (k === K.LEAF) {
-        this.vx[i] += (wind * 6 - this.vx[i]) * dt;
-        this.vy[i] = 1.2 + Math.sin(this.life[i] * 3) * 0.8;
+      if (k === K.LEAF || k === 33) {
+        // лёгкое тело: сопротивление воздуха сильнее тяжести, парит и кружится
+        this.vx[i] += (wind * 6 + Math.sin(this.life[i] * 2.3 + i) * 1.5 - this.vx[i]) * dt;
+        this.vy[i] = (k === 33 ? 0.9 : 1.2) + Math.sin(this.life[i] * 3 + i) * 0.8;
+      } else if (k === 37) {
+        this.vx[i] += (Math.sin(this.life[i] * 1.3 + i * 7) * 1.2 - this.vx[i]) * dt;
+        this.vy[i] += (Math.cos(this.life[i] * 1.7 + i * 3) * 0.8 - this.vy[i]) * dt;
+      } else if (k === 38) {
+        this.vx[i] += (wind * 0.6 - this.vx[i]) * dt * 0.3;
       } else this.vy[i] += (k === K.DUST ? 6 : 30) * dt;
       const nx = this.x[i] + this.vx[i] * dt;
       const ny = this.y[i] + this.vy[i] * dt;
       if (solid(nx, ny)) {
         this.vx[i] *= 0.3;
         this.vy[i] = 0;
-        if (k === K.LEAF) this.life[i] = Math.min(this.life[i], 1.5);
+        if (k === K.LEAF || k === 33) this.life[i] = Math.min(this.life[i], 1.5);
       } else {
         this.x[i] = nx;
         this.y[i] = ny;
@@ -82,7 +100,8 @@ export class Particles {
       const y = this.y[i];
       if (x < x0 || x > x1 || y < y0 || y > y1) continue;
       const a = Math.round(Math.min(1, this.life[i] / this.max[i] * 1.5) * 255);
-      b.push(x, y, 0, this.size[i], this.kind[i], this.kind[i] === K.LEAF ? Math.round(this.life[i] * 40) : a, 0, 0, 0, this.mat[i], 0, 0);
+      const k = this.kind[i];
+      b.push(x, y, 0, this.size[i], k, k === K.LEAF || k === 33 ? Math.round(this.life[i] * 40) : a, 0, 0, 0, this.mat[i], 0, (i * 37) & 255);
     }
   }
 

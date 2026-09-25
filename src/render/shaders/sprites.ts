@@ -282,6 +282,14 @@ vec4 food(vec2 p, uint kind, uint variant, uint anim) {
     cc = mix(cc, cc * 1.35, smoothstep(0.04, 0.0, abs(q.y)));
     return fillSD(d, cc, aa);
   }
+  if (kind == 14u) {
+    // лепесток сакуры: сердцевидный, с выемкой, полупрозрачный край
+    vec2 q = rot(p, v * 6.28 + float(anim) * 0.05);
+    float d = sdE(q, vec2(0.9, 0.6));
+    d = max(d, -(length(q - vec2(0.95, 0.0)) - 0.25));
+    vec3 cc = mix(vec3(1.0, 0.86, 0.92), vec3(0.96, 0.6, 0.72), smoothstep(-0.8, 0.8, q.x));
+    return fillSD(d, cc, aa) * 0.95;
+  }
   if (kind == 13u) {
     vec2 q = rot(p, v * 6.28);
     float d = sdSeg(q, vec2(-0.9, 0.0), vec2(0.9, 0.0)) - 0.16;
@@ -391,6 +399,22 @@ void main() {
     vec2 q = rot(p, float(v_a.y) * 0.05);
     float d = sdE(q, vec2(0.9, 0.4));
     col = fillSD(d, vec3(0.45, 0.6, 0.25), 0.05);
+  } else if (kind == 33u) {
+    col = food(p, 14u, v_b.w, v_a.y);
+  } else if (kind == 37u) {
+    // светлячок: ядро и мягкое свечение, пульсирует
+    float pulse = 0.5 + 0.5 * sin(u_time * 3.0 + float(v_b.w) * 0.3);
+    float g = exp(-dot(p, p) * 3.0) * (0.35 + 0.65 * pulse);
+    float core = smoothstep(0.25, 0.0, length(p));
+    vec3 c = vec3(0.75, 1.0, 0.35);
+    col = vec4(c * (g + core), clamp(g + core, 0.0, 1.0));
+    o = col;
+    return;
+  } else if (kind == 38u) {
+    float a = exp(-dot(p, p) * 4.0) * float(v_a.y) / 255.0 * 0.5;
+    col = vec4(vec3(1.0, 0.95, 0.85) * a, a);
+    o = col;
+    return;
   } else if (kind == 34u) {
     // куча запасов/земли
     float a2 = atan(p.y, p.x);
